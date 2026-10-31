@@ -10,7 +10,6 @@ import org.gradle.api.tasks.testing.Test
 import org.gradle.api.tasks.testing.logging.TestLogEvent
 import org.gradle.kotlin.dsl.configure
 import org.gradle.kotlin.dsl.dependencies
-import org.gradle.kotlin.dsl.provideDelegate
 import org.gradle.kotlin.dsl.the
 import org.gradle.kotlin.dsl.withType
 import org.jetbrains.kotlin.compose.compiler.gradle.ComposeCompilerGradlePluginExtension
@@ -22,15 +21,15 @@ val Project.compose get() = the<LibrariesForCompose>()
 val Project.kotlinx get() = the<LibrariesForKotlinx>()
 val Project.libs get() = the<LibrariesForLibs>()
 
-internal fun Project.configureAndroid(commonExtension: CommonExtension<*, *, *, *, *, *>) {
+internal fun Project.configureAndroid(commonExtension: CommonExtension) {
     commonExtension.apply {
         compileSdk = AndroidConfig.COMPILE_SDK
 
-        defaultConfig {
+        defaultConfig.apply {
             minSdk = AndroidConfig.MIN_SDK
         }
 
-        compileOptions {
+        compileOptions.apply {
             sourceCompatibility = AndroidConfig.JavaVersion
             targetCompatibility = AndroidConfig.JavaVersion
             isCoreLibraryDesugaringEnabled = true
@@ -41,14 +40,12 @@ internal fun Project.configureAndroid(commonExtension: CommonExtension<*, *, *, 
         compilerOptions {
             jvmTarget.set(AndroidConfig.JvmTarget)
             freeCompilerArgs.addAll(
-                "-Xcontext-parameters",
                 "-opt-in=kotlin.RequiresOptIn",
             )
 
             // Treat all Kotlin warnings as errors (disabled by default)
             // Override by setting warningsAsErrors=true in your ~/.gradle/gradle.properties
-            val warningsAsErrors: String? by project
-            allWarningsAsErrors.set(warningsAsErrors.toBoolean())
+            allWarningsAsErrors.set(providers.gradleProperty("warningsAsErrors").map(String::toBoolean).orElse(false))
 
         }
     }
@@ -58,11 +55,11 @@ internal fun Project.configureAndroid(commonExtension: CommonExtension<*, *, *, 
     }
 }
 
-internal fun Project.configureCompose(commonExtension: CommonExtension<*, *, *, *, *, *>) {
+internal fun Project.configureCompose(commonExtension: CommonExtension) {
     pluginManager.apply(kotlinx.plugins.compose.compiler.get().pluginId)
 
     commonExtension.apply {
-        buildFeatures {
+        buildFeatures.apply {
             compose = true
         }
 

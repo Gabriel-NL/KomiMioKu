@@ -19,6 +19,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -315,7 +316,7 @@ fun SourceOptionsDialog(
                 // KMK -->
                 if (onClickSettings != null &&
                     source.installedExtension !== null &&
-                    source.id !in listOf(LocalSource.ID, EH_SOURCE_ID, EXH_SOURCE_ID)
+                    source.id !in listOf(LocalSource.ID, LocalSource.PRIVATE_COLLECTION_ID, EH_SOURCE_ID, EXH_SOURCE_ID)
                 ) {
                     Text(
                         text = stringResource(MR.strings.label_extension_info),
@@ -374,6 +375,42 @@ fun SourceCategoriesDialog(
         confirmButton = {
             TextButton(onClick = { onClickCategories(newCategories.toList()) }) {
                 Text(text = stringResource(MR.strings.action_ok))
+            }
+        },
+    )
+}
+
+@Composable
+fun CreateCollectionDialog(
+    onDismissRequest: () -> Unit,
+    onCreate: (String) -> Unit,
+) {
+    var name by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismissRequest,
+        title = {
+            Text(text = stringResource(KMR.strings.create_collection_title))
+        },
+        text = {
+            OutlinedTextField(
+                value = name,
+                onValueChange = { name = it },
+                label = { Text(text = stringResource(KMR.strings.create_collection_name_hint)) },
+                singleLine = true,
+            )
+        },
+        confirmButton = {
+            TextButton(
+                enabled = name.isNotBlank(),
+                onClick = { onCreate(name) },
+            ) {
+                Text(text = stringResource(MR.strings.action_ok))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismissRequest) {
+                Text(text = stringResource(MR.strings.action_cancel))
             }
         },
     )

@@ -123,6 +123,7 @@ object SettingsDataScreen : SearchableSettings {
     override fun getPreferences(): List<Preference> {
         val backupPreferences = Injekt.get<BackupPreferences>()
         val storagePreferences = Injekt.get<StoragePreferences>()
+        val collectionNavigator = LocalNavigator.currentOrThrow
 
         val syncPreferences = remember { Injekt.get<SyncPreferences>() }
         val syncService by syncPreferences.syncService().collectAsState()
@@ -130,6 +131,12 @@ object SettingsDataScreen : SearchableSettings {
         return persistentListOf(
             getStorageLocationPref(storagePreferences = storagePreferences),
             Preference.PreferenceItem.InfoPreference(stringResource(MR.strings.pref_storage_location_info)),
+
+            Preference.PreferenceItem.TextPreference(
+                title = stringResource(KMR.strings.private_collection_name),
+                subtitle = stringResource(KMR.strings.private_collection_folder_summary),
+                onClick = { collectionNavigator.push(SettingsPrivateCollectionScreen) },
+            ),
 
             getBackupAndRestoreGroup(backupPreferences = backupPreferences),
             getDataGroup(),

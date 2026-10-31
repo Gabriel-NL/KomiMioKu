@@ -117,6 +117,7 @@ import tachiyomi.i18n.MR
 import tachiyomi.i18n.kmk.KMR
 import tachiyomi.i18n.sy.SYMR
 import tachiyomi.presentation.core.screens.LoadingScreen
+import tachiyomi.source.local.isLocal
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
@@ -392,6 +393,7 @@ class MangaScreen(
             onMorePreviewsClicked = { openMorePagePreviews(navigator, successState.manga) },
             // SY <--
             onEditNotesClicked = { navigator.push(MangaNotesScreen(manga = successState.manga)) },
+            onEditTagsClicked = screenModel::showEditMangaTagsDialog.takeIf { successState.manga.isLocal() },
             onMultiBookmarkClicked = screenModel::bookmarkChapters,
             onMultiMarkAsReadClicked = screenModel::markChaptersRead,
             onMarkPreviousAsReadClicked = screenModel::markPreviousChapterRead,
@@ -609,6 +611,19 @@ class MangaScreen(
                 )
             }
             // SY -->
+            is MangaScreenModel.Dialog.EditMangaTags -> {
+                val catalog = remember(screenModel) { screenModel.observeCollectionTagOptions() }
+                val tags by catalog.collectAsState(initial = emptyList())
+                EditMangaTagsDialog(
+                    mangaId = dialog.manga.id,
+                    initialTags = dialog.manga.genre.orEmpty(),
+                    catalog = tags,
+                    saving = dialog.saving,
+                    failed = dialog.failed,
+                    onDismissRequest = screenModel::dismissDialog,
+                    onSave = screenModel::updateMangaTags,
+                )
+            }
             is MangaScreenModel.Dialog.EditMangaInfo -> {
                 EditMangaDialog(
                     manga = dialog.manga,

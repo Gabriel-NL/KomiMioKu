@@ -698,7 +698,8 @@ class MangaScreenModel(
                 ogStatus = status ?: 0,
                 lastUpdate = manga.lastUpdate + 1,
             )
-            (sourceManager.get(LocalSource.ID) as LocalSource).updateMangaInfo(manga.toSManga())
+            val localSource = sourceManager.get(manga.source) as LocalSource
+            localSource.updateMangaInfo(manga.toSManga())
             screenModelScope.launchNonCancellable {
                 updateManga.await(
                     MangaUpdate(
@@ -712,6 +713,7 @@ class MangaScreenModel(
                         status = status,
                     ),
                 )
+                localSource.updateCollectionMangaTags(manga.id, tags.orEmpty())
             }
         } else {
             val genre = if (!tags.isNullOrEmpty() && tags != state.manga.ogGenre) {
@@ -1898,6 +1900,7 @@ class MangaScreenModel(
 
         // SY -->
         data class EditMangaInfo(val manga: Manga) : Dialog
+        data class EditMangaTags(val manga: Manga, val saving: Boolean = false, val failed: Boolean = false) : Dialog
         data class EditMergedSettings(val mergedData: MergedMangaData) : Dialog
         // SY <--
 
@@ -1911,6 +1914,7 @@ class MangaScreenModel(
     }
 
     fun dismissDialog() {
+        if ((successState?.dialog as? Dialog.EditMangaTags)?.saving == true) return
         updateSuccessState { it.copy(dialog = null) }
     }
 
@@ -1942,6 +1946,36 @@ class MangaScreenModel(
     }
 
     // SY -->
+    fun showEditMangaTagsDialog() {
+        val manga = successState?.manga ?: return
+        if (!manga.isLocal()) return
+        updateSuccessState { it.copy(dialog = Dialog.EditMangaTags(manga)) }
+    }
+
+    fun observeCollectionTagOptions() =
+        (successState?.manga?.source?.let { sourceManager.get(it) } as? LocalSource)?.observeCollectionTags() ?: flowOf(emptyList())
+
+    fun updateMangaTags(tags: List<String>) {
+        val dialog = successState?.dialog as? Dialog.EditMangaTags ?: return
+        if (dialog.saving || !dialog.manga.isLocal()) return
+        updateSuccessState { it.copy(dialog = dialog.copy(saving = true, failed = false)) }
+        screenModelScope.launchIO {
+            try {
+                val localSource = sourceManager.get(dialog.manga.source) as LocalSource
+                val saved = localSource.updateMangaTags(dialog.manga.toSManga(), dialog.manga.id, tags)
+                check(updateManga.await(MangaUpdate(dialog.manga.id, genre = saved)))
+                updateSuccessState {
+                    it.copy(manga = it.manga.copy(ogGenre = saved), dialog = null)
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                logcat(LogPriority.ERROR, e) { "Failed to save local manga tags" }
+                updateSuccessState { it.copy(dialog = dialog.copy(failed = true)) }
+            }
+        }
+    }
+
     fun showEditMangaInfoDialog() {
         mutableState.update { state ->
             when (state) {

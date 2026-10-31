@@ -49,6 +49,7 @@ import eu.kanade.presentation.category.components.ChangeCategoryDialog
 import eu.kanade.presentation.components.BulkSelectionToolbar
 import eu.kanade.presentation.manga.DuplicateMangaDialog
 import eu.kanade.presentation.more.settings.screen.SettingsEhScreen
+import eu.kanade.presentation.more.settings.screen.SettingsPrivateCollectionScreen
 import eu.kanade.presentation.util.AssistContentScreen
 import eu.kanade.presentation.util.Screen
 import eu.kanade.tachiyomi.source.ConfigurableSource
@@ -149,7 +150,13 @@ data class BrowseSourceScreen(
         val uriHandler = LocalUriHandler.current
         val snackbarHostState = remember { SnackbarHostState() }
 
-        val onHelpClick = { uriHandler.openUri(LocalSource.HELP_URL) }
+        val onHelpClick: () -> Unit = {
+            if (sourceId == LocalSource.PRIVATE_COLLECTION_ID) {
+                navigator.push(SettingsPrivateCollectionScreen)
+            } else {
+                uriHandler.openUri(LocalSource.HELP_URL)
+            }
+        }
         val onWebViewClick = f@{
             val source = screenModel.source as? HttpSource ?: return@f
             navigator.push(

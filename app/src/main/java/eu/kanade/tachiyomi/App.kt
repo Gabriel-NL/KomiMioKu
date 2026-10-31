@@ -77,8 +77,10 @@ import exh.log.EnhancedFilePrinter
 import exh.log.XLogLogcatLogger
 import exh.log.xLogD
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.launch
 import logcat.AndroidLogcatLogger
 import logcat.LogPriority
 import logcat.LogcatLogger
@@ -91,9 +93,11 @@ import tachiyomi.core.common.preference.Preference
 import tachiyomi.core.common.preference.PreferenceStore
 import tachiyomi.core.common.util.system.ImageUtil
 import tachiyomi.core.common.util.system.logcat
+import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.domain.storage.service.StorageManager
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.widget.WidgetManager
+import tachiyomi.source.local.LocalSource
 import timber.log.Timber
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
@@ -235,6 +239,15 @@ class App : Application(), DefaultLifecycleObserver, SingletonImageLoader.Factor
         }
 
         initializeMigrator()
+
+        // Warm the local catalog off the main thread and retain it for this process.
+        // The filter dialog only subscribes to this shared catalog; it does not own it.
+        scope.launch(Dispatchers.IO) {
+            val sources = Injekt.get<SourceManager>().sources.first { sources ->
+                sources.any { it is LocalSource }
+            }
+            sources.filterIsInstance<LocalSource>().forEach { it.preloadCollectionMetadata() }
+        }
     }
 
     private fun initializeMigrator() {

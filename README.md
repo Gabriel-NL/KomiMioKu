@@ -14,7 +14,7 @@
 
 [![Discord](https://img.shields.io/discord/1242381704459452488.svg?label=&labelColor=6A7EC2&color=7389D8&logo=discord&logoColor=FFFFFF)](https://discord.gg/85jB7V5AJR)
 [![CI](https://img.shields.io/github/actions/workflow/status/komikku-app/komikku/build_push.yml?labelColor=27303D&label=CI)](https://github.com/komikku-app/komikku/actions/workflows/build_push.yml)
-[![License: Apache-2.0](https://img.shields.io/github/license/komikku-app/komikku?labelColor=27303D&color=0877d2)](/LICENSE)
+[![License: Apache-2.0](https://img.shields.io/github/license/komikku-app/komikku?labelColor=27303D&color=0877d2)](Legal%20Details/LICENSE)
 [![Translation status](https://img.shields.io/weblate/progress/komikku-app?labelColor=27303D&color=946300)](https://hosted.weblate.org/engage/komikku-app/)
 
 ## Download
@@ -168,7 +168,7 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md).
 
 <details><summary>Code of Conduct</summary>
 
-See [CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md).
+See [CODE_OF_CONDUCT.md](Legal%20Details/CODE_OF_CONDUCT.md).
 </details>
 
 <div align="center">

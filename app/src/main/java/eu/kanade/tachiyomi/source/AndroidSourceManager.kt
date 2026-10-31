@@ -37,10 +37,15 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import tachiyomi.domain.manga.interactor.GetMergedReferencesById
+import tachiyomi.domain.source.model.FileSourceIds
 import tachiyomi.domain.source.model.StubSource
 import tachiyomi.domain.source.repository.StubSourceRepository
 import tachiyomi.domain.source.service.SourceManager
+import tachiyomi.domain.storage.service.StorageManager
 import tachiyomi.source.local.LocalSource
+import tachiyomi.source.local.PrivateCollectionSource
+import tachiyomi.source.local.image.LocalCoverManager
+import tachiyomi.source.local.io.LocalSourceFileSystem
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import uy.kohesive.injekt.injectLazy
@@ -72,9 +77,52 @@ class AndroidSourceManager(
     // SY <--
     // KMK -->
     private val getMergedReferencesById: GetMergedReferencesById by injectLazy()
+
+    // Keep the local catalog alive when extensions/preferences rebuild the source map.
+    private val localSource by lazy {
+        LocalSource(
+            context,
+            Injekt.get(),
+            Injekt.get(),
+            sourcePreferences.allowLocalSourceHiddenFolders()::get,
+            scope,
+        )
+    }
+    private val privateCollectionSource by lazy {
+        val files = LocalSourceFileSystem(Injekt.get<StorageManager>(), privateCollection = true)
+        PrivateCollectionSource(
+            context,
+            files,
+            LocalCoverManager(context, files),
+            sourcePreferences.allowLocalSourceHiddenFolders()::get,
+            scope,
+        )
+    }
     // KMK <--
 
+    private fun getCustomLocalSources(): List<LocalSource> {
+        val storageManager = Injekt.get<StorageManager>()
+        val customDir = storageManager.getCustomLocalSourcesDirectory() ?: return emptyList()
+        val folders = customDir.listFiles()?.filter { it.isDirectory }.orEmpty()
+
+        return folders.mapNotNull { folder ->
+            val folderName = folder.name ?: return@mapNotNull null
+            val sourceId = FileSourceIds.getCustomSourceId(folderName)
+            val files = LocalSourceFileSystem(storageManager, customDirectory = folder)
+            LocalSource(
+                context = context,
+                fileSystem = files,
+                coverManager = LocalCoverManager(context, files),
+                allowHiddenFiles = sourcePreferences.allowLocalSourceHiddenFolders()::get,
+                applicationScope = scope,
+                id = sourceId,
+                customName = folderName,
+            )
+        }
+    }
+
     init {
+        val storageManager = Injekt.get<StorageManager>()
         scope.launch {
             extensionManager.installedExtensionsFlow
                 // SY -->
@@ -85,21 +133,19 @@ class AndroidSourceManager(
                 .combine(
                     exhPreferences.isHentaiEnabled().changes(),
                 ) { (a, b), c -> Triple(a, b, c) }
+                .combine(storageManager.changes) { triple, _ -> triple }
                 // KMK <--
                 // SY <--
                 .collectLatest { (extensions, enableExhentai/* KMK --> */, isHentaiEnabled/* KMK <-- */) ->
                     val mutableMap = ConcurrentHashMap<Long, Source>(
                         mapOf(
-                            LocalSource.ID to LocalSource(
-                                context,
-                                Injekt.get(),
-                                Injekt.get(),
-                                // SY -->
-                                sourcePreferences.allowLocalSourceHiddenFolders()::get,
-                                // SY <--
-                            ),
+                            LocalSource.ID to localSource,
+                            LocalSource.PRIVATE_COLLECTION_ID to privateCollectionSource,
                         ),
                     ).apply {
+                        getCustomLocalSources().forEach { source ->
+                            put(source.id, source)
+                        }
                         // KMK -->
                         if (isHentaiEnabled) {
                             EHENTAI_EXT_SOURCES.forEach { (id, lang) ->
@@ -118,8 +164,10 @@ class AndroidSourceManager(
                     }
                     extensions.forEach { extension ->
                         extension.sources.mapNotNull { it.toInternalSource(/* KMK --> */isHentaiEnabled/* KMK <-- */) }.forEach {
-                            mutableMap[it.id] = it
-                            registerStubSource(StubSource.from(it))
+                            if (it.id != LocalSource.ID && it.id != LocalSource.PRIVATE_COLLECTION_ID) {
+                                mutableMap[it.id] = it
+                                registerStubSource(StubSource.from(it))
+                            }
                         }
                     }
                     sourcesMapFlow.value = mutableMap

@@ -1,0 +1,7 @@
+CREATE TABLE local_manga_tags (
+    manga_id INTEGER NOT NULL REFERENCES mangas(_id) ON DELETE CASCADE,
+    tag_id INTEGER NOT NULL REFERENCES local_tags(id) ON DELETE CASCADE,
+    PRIMARY KEY (manga_id, tag_id)
+);
+
+CREATE INDEX local_manga_tags_tag_index ON local_manga_tags(tag_id);

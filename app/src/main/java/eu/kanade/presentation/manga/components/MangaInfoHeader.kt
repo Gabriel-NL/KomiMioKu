@@ -358,6 +358,7 @@ fun ExpandableMangaDescription(
     onTagSearch: (String) -> Unit,
     onCopyTagToClipboard: (tag: String) -> Unit,
     onEditNotes: () -> Unit,
+    onEditTags: (() -> Unit)?,
     // SY -->
     searchMetadataChips: SearchMetadataChips?,
     doSearch: (query: String, global: Boolean) -> Unit,
@@ -380,11 +381,18 @@ fun ExpandableMangaDescription(
             expanded = expanded,
             notes = notes,
             onEditNotesClicked = onEditNotes,
+            onEditTagsClicked = onEditTags,
             modifier = Modifier
                 .padding(top = 8.dp)
                 .padding(horizontal = 16.dp)
                 .clickableNoIndication { onExpanded(!expanded) },
         )
+        // Local metadata is editable even when there are no tags or library membership.
+        if (onEditTags != null) {
+            TextButton(onClick = onEditTags, modifier = Modifier.padding(horizontal = 16.dp)) {
+                Text(stringResource(KMR.strings.action_edit_manga_tags))
+            }
+        }
         val tags = tagsProvider()
         if (!tags.isNullOrEmpty()) {
             Box(
@@ -919,6 +927,7 @@ private fun MangaSummary(
     notes: String,
     expanded: Boolean,
     onEditNotesClicked: () -> Unit,
+    onEditTagsClicked: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
     val preferences = remember { Injekt.get<UiPreferences>() }
@@ -951,6 +960,7 @@ private fun MangaSummary(
                         content = notes,
                         expanded = expanded,
                         onEditNotes = onEditNotesClicked,
+                        onEditTags = onEditTagsClicked,
                     )
                     SelectionContainer {
                         MarkdownRender(

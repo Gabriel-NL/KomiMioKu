@@ -20,6 +20,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.tooling.preview.PreviewLightDark
 import androidx.compose.ui.unit.dp
 import tachiyomi.i18n.MR
+import tachiyomi.i18n.kmk.KMR
 import tachiyomi.presentation.core.components.material.Button
 import tachiyomi.presentation.core.components.material.ButtonDefaults
 import tachiyomi.presentation.core.components.material.padding
@@ -31,6 +32,7 @@ fun MangaNotesSection(
     expanded: Boolean,
     onEditNotes: () -> Unit,
     modifier: Modifier = Modifier,
+    onEditTags: (() -> Unit)? = null,
 ) {
     if (content.isBlank()) return
     Column(
@@ -43,7 +45,7 @@ fun MangaNotesSection(
         )
         if (expanded) {
             Button(
-                onClick = onEditNotes,
+                onClick = onEditTags ?: onEditNotes,
                 colors = ButtonDefaults.buttonColors(
                     containerColor = Color.Transparent,
                     contentColor = MaterialTheme.colorScheme.primary,
@@ -63,7 +65,7 @@ fun MangaNotesSection(
                             .size(16.dp),
                     )
                     Text(
-                        stringResource(MR.strings.action_edit_notes),
+                        stringResource(if (onEditTags != null) KMR.strings.action_edit_manga_tags else MR.strings.action_edit_notes),
                     )
                 }
             }

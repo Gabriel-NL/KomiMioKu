@@ -2,11 +2,11 @@ import mihon.buildlogic.Config
 import mihon.buildlogic.getBuildTime
 import mihon.buildlogic.getCommitCount
 import mihon.buildlogic.getGitSha
+import mihon.buildlogic.tasks.GenerateShortcutsTask
 
 plugins {
     id("mihon.android.application")
     id("mihon.android.application.compose")
-    id("com.github.zellius.shortcut-helper")
     kotlin("plugin.parcelize")
     kotlin("plugin.serialization")
     alias(libs.plugins.aboutLibraries)
@@ -20,7 +20,16 @@ if (Config.includeTelemetry) {
     }
 }
 
-shortcutHelper.setFilePath("./shortcuts.xml")
+androidComponents {
+    onVariants { variant ->
+        val shortcuts = tasks.register<GenerateShortcutsTask>("generate${variant.name.replaceFirstChar(Char::uppercaseChar)}Shortcuts") {
+            shortcutFile.set(layout.projectDirectory.file("shortcuts.xml"))
+            applicationId.set(variant.applicationId)
+            outputDirectory.set(layout.buildDirectory.dir("generated/shortcuts/${variant.name}/res"))
+        }
+        variant.sources.res?.addGeneratedSourceDirectory(shortcuts, GenerateShortcutsTask::outputDirectory)
+    }
+}
 
 android {
     namespace = "eu.kanade.tachiyomi"
@@ -41,12 +50,12 @@ android {
     }
 
     buildTypes {
-        val debug by getting {
+        val debug = getByName("debug") {
             applicationIdSuffix = ".dev"
             versionNameSuffix = "-${getCommitCount()}"
             isPseudoLocalesEnabled = true
         }
-        val release by getting {
+        val release = getByName("release") {
             isMinifyEnabled = Config.enableCodeShrink
             isShrinkResources = Config.enableCodeShrink
 
@@ -100,8 +109,8 @@ android {
     }
 
     sourceSets {
-        getByName("preview").res.srcDirs("src/beta/res")
-        getByName("benchmark").res.srcDirs("src/debug/res")
+        getByName("preview").res.directories.add("src/beta/res")
+        getByName("benchmark").res.directories.add("src/debug/res")
     }
 
     splits {
@@ -115,15 +124,16 @@ android {
 
     packaging {
         jniLibs {
-            keepDebugSymbols += listOf(
-                "libandroidx.graphics.path",
-                "libarchive-jni",
-                "libconscrypt_jni",
-                "libimagedecoder",
-                "libquickjs",
-                "libsqlite3x",
+            keepDebugSymbols.addAll(
+                listOf(
+                    "**/libandroidx.graphics.path.so",
+                    "**/libarchive-jni.so",
+                    "**/libconscrypt_jni.so",
+                    "**/libimagedecoder.so",
+                    "**/libquickjs.so",
+                    "**/libsqlite3x.so",
+                ),
             )
-                .map { "**/$it.so" }
         }
         resources {
             excludes += setOf(
@@ -153,7 +163,6 @@ android {
         aidl = true
 
         // Disable some unused things
-        renderScript = false
         shaders = false
     }
 
@@ -178,7 +187,6 @@ kotlin {
             "-opt-in=kotlinx.coroutines.FlowPreview",
             "-opt-in=kotlinx.coroutines.InternalCoroutinesApi",
             "-opt-in=kotlinx.serialization.ExperimentalSerializationApi",
-            "-Xannotation-default-target=param-property",
         )
     }
 }

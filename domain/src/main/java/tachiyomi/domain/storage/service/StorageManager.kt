@@ -32,7 +32,7 @@ import java.io.File
 
 class StorageManager(
     private val context: Context,
-    storagePreferences: StoragePreferences,
+    private val storagePreferences: StoragePreferences,
 ) {
 
     private val scope = CoroutineScope(Dispatchers.IO)
@@ -44,6 +44,7 @@ class StorageManager(
         .shareIn(scope, SharingStarted.Lazily, 1)
 
     init {
+
         storagePreferences.baseStorageDirectory().changes()
             .drop(1)
             .distinctUntilChanged()
@@ -55,6 +56,7 @@ class StorageManager(
                     parent.createDirectory(DOWNLOADS_PATH).also {
                         DiskUtil.createNoMediaFile(it, context)
                     }
+                    parent.createDirectory(CUSTOM_LOCAL_SOURCES_PATH)
                 }
                 _changes.send(Unit)
             }
@@ -78,8 +80,42 @@ class StorageManager(
         return baseDir?.createDirectory(DOWNLOADS_PATH)
     }
 
-    fun getLocalSourceDirectory(): UniFile? {
-        return baseDir?.createDirectory(LOCAL_SOURCE_PATH)
+    fun getLocalSourceDirectory(): UniFile? = baseDir?.createDirectory(LOCAL_SOURCE_PATH)
+
+    /**
+     * Returns the base "CustomLocalSources" directory inside app storage, or null if base storage is missing.
+     */
+    fun getCustomLocalSourcesDirectory(): UniFile? {
+        return baseDir?.createDirectory(CUSTOM_LOCAL_SOURCES_PATH)
+    }
+
+    /**
+     * Creates and returns a specific collection directory inside "CustomLocalSources/<name>",
+     * or null if base storage is missing or accessible.
+     */
+    fun createCustomLocalSourceDirectory(name: String): UniFile? {
+        val dir = getCustomLocalSourcesDirectory()?.createDirectory(name)
+        if (dir != null) {
+            _changes.trySend(Unit)
+        }
+        return dir
+    }
+
+    fun getPrivateCollectionDirectory(): UniFile? {
+        val selected = storagePreferences.privateCollectionDirectory().get()
+        // Never fall back to a different collection when a configured URI loses access.
+        // Without a selection, Private has its own dedicated folder under the storage root.
+        return if (selected.isBlank()) {
+            baseDir?.createDirectory(PRIVATE_COLLECTION_PATH)
+        } else {
+            try {
+                getBaseDir(selected)
+            } catch (_: SecurityException) {
+                null
+            } catch (_: IllegalArgumentException) {
+                null
+            }
+        }
     }
 
     // SY -->
@@ -222,6 +258,8 @@ class StorageManager(
 private const val AUTOMATIC_BACKUPS_PATH = "autobackup"
 private const val DOWNLOADS_PATH = "downloads"
 private const val LOCAL_SOURCE_PATH = "local"
+private const val PRIVATE_COLLECTION_PATH = "MinhaColecao"
+private const val CUSTOM_LOCAL_SOURCES_PATH = "CustomLocalSources"
 
 // SY -->
 private const val LOGS_PATH = "logs"

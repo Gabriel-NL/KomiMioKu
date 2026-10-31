@@ -38,6 +38,7 @@ import logcat.LogPriority
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.source.model.Pin
 import tachiyomi.domain.source.model.Source
+import tachiyomi.domain.storage.service.StorageManager
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.util.TreeMap
@@ -46,6 +47,10 @@ class SourcesScreenModel(
     private val getEnabledSources: GetEnabledSources = Injekt.get(),
     private val toggleSource: ToggleSource = Injekt.get(),
     private val toggleSourcePin: ToggleSourcePin = Injekt.get(),
+
+    private val storageManager: StorageManager = Injekt.get(), // <-- Add this dependency
+
+    // ... rest of parameters
     // SY -->
     private val uiPreferences: UiPreferences = Injekt.get(),
     private val getSourceCategories: GetSourceCategories = Injekt.get(),
@@ -207,6 +212,22 @@ class SourcesScreenModel(
         mutableState.update { it.copy(dialog = null) }
     }
 
+    fun showCreateCollectionDialog() {
+        mutableState.update { it.copy(dialog = Dialog.CreateCollection) }
+    }
+    fun createCollection(name: String) {
+        val trimmedName = name.trim()
+        if (trimmedName.isBlank()) return
+
+        val directory = storageManager.createCustomLocalSourceDirectory(trimmedName)
+        if (directory == null) {
+            // Storage is missing or not set! Send event to notify UI.
+            _events.trySend(Event.StorageLocationMissing)
+        }
+
+        closeDialog()
+    }
+
     // KMK -->
     fun search(query: String?) {
         mutableState.update {
@@ -223,11 +244,13 @@ class SourcesScreenModel(
 
     sealed interface Event {
         data object FailedFetchingSources : Event
+        data object StorageLocationMissing : Event
     }
 
     sealed class Dialog {
         data class SourceLongClick(val source: Source) : Dialog()
         data class SourceCategories(val source: Source) : Dialog()
+        data object CreateCollection : Dialog() // <--
     }
 
     @Immutable

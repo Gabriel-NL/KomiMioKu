@@ -1,0 +1,10 @@
+CREATE TABLE local_source_tags (
+    source_id INTEGER NOT NULL,
+    tag_id INTEGER NOT NULL REFERENCES local_tags(id) ON DELETE CASCADE,
+    PRIMARY KEY (source_id, tag_id)
+);
+
+CREATE INDEX local_source_tags_tag_index ON local_source_tags(tag_id);
+
+-- Preserve the previously global catalog as Local history; private discovery populates its own catalog.
+INSERT INTO local_source_tags(source_id, tag_id) SELECT 0, id FROM local_tags;

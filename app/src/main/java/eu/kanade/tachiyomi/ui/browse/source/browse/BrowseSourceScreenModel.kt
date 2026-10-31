@@ -41,6 +41,7 @@ import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.firstOrNull
@@ -82,7 +83,10 @@ import tachiyomi.domain.source.model.SavedSearch
 import tachiyomi.domain.source.model.StubSource
 import tachiyomi.domain.source.repository.SourcePagingSource
 import tachiyomi.domain.source.service.SourceManager
+import tachiyomi.domain.storage.service.StoragePreferences
 import tachiyomi.i18n.sy.SYMR
+import tachiyomi.source.local.LocalSource
+import tachiyomi.source.local.filter.CollectionOptions
 import tachiyomi.source.local.isLocal
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
@@ -219,8 +223,21 @@ open class BrowseSourceScreenModel(
      * Flow of Pager flow tied to [State.listing]
      */
     private val hideInLibraryItems = sourcePreferences.hideInLibraryItems().get()
+    private val collectionFolderChanges = if (source.isLocal()) {
+        val storage = Injekt.get<StoragePreferences>()
+        if (source.id == LocalSource.PRIVATE_COLLECTION_ID) {
+            combine(storage.baseStorageDirectory().changes(), storage.privateCollectionDirectory().changes()) { base, collection ->
+                base to collection
+            }
+        } else {
+            storage.baseStorageDirectory().changes().map { it to "" }
+        }
+    } else {
+        flowOf("" to "")
+    }
     val mangaPagerFlowFlow = state.map { it.listing }
         .distinctUntilChanged()
+        .combine(collectionFolderChanges) { listing, _ -> listing }
         .map { listing ->
             Pager(PagingConfig(pageSize = 25)) {
                 // SY -->
@@ -333,6 +350,14 @@ open class BrowseSourceScreenModel(
                         genreExists = true
                         break@filter
                     }
+                }
+            } else if (sourceFilter is CollectionOptions) {
+                val index = sourceFilter.values.indexOfFirst { it.equals(genreName, true) }
+                if (index != -1) {
+                    // Positive states also represent a single inclusion in saved searches.
+                    sourceFilter.state = index + 1
+                    genreExists = true
+                    break
                 }
             } else if (sourceFilter is SourceModelFilter.Select<*>) {
                 val index = sourceFilter.values.filterIsInstance<String>()

@@ -1,0 +1,46 @@
+CREATE TABLE local_manga_tags (
+    manga_id INTEGER NOT NULL REFERENCES mangas(_id) ON DELETE CASCADE,
+    tag_id INTEGER NOT NULL REFERENCES local_tags(id) ON DELETE CASCADE,
+    PRIMARY KEY (manga_id, tag_id)
+);
+
+CREATE INDEX local_manga_tags_tag_index ON local_manga_tags(tag_id);
+
+ensureLocalManga:
+INSERT INTO mangas(source, url, title, status, favorite, initialized, viewer, chapter_flags, cover_last_modified, date_added)
+SELECT :source_id, :url, :title, 0, 0, 0, 0, 0, 0, 0
+WHERE NOT EXISTS (SELECT 1 FROM mangas WHERE source = :source_id AND url = :url);
+
+getLocalMangaId:
+SELECT _id FROM mangas
+WHERE source = :source_id AND url = :url
+ORDER BY _id
+LIMIT 1;
+
+clearMangaTags:
+DELETE FROM local_manga_tags
+WHERE manga_id = :manga_id
+AND EXISTS (SELECT 1 FROM mangas WHERE _id = :manga_id AND source IN (0, 1000000000001));
+
+insertMangaTag:
+INSERT OR IGNORE INTO local_manga_tags(manga_id, tag_id)
+SELECT :manga_id, id FROM local_tags
+WHERE normalized_name = :normalized_name
+AND EXISTS (SELECT 1 FROM mangas WHERE _id = :manga_id AND source IN (0, 1000000000001));
+
+getTagsForManga:
+SELECT local_tags.id, local_tags.name, local_tags.normalized_name
+FROM local_tags
+JOIN local_manga_tags ON local_manga_tags.tag_id = local_tags.id
+WHERE local_manga_tags.manga_id = :manga_id
+ORDER BY local_tags.normalized_name;
+
+mergeTagLinks:
+INSERT OR IGNORE INTO local_manga_tags(manga_id, tag_id)
+SELECT manga_id, :target_id FROM local_manga_tags WHERE tag_id = :old_id;
+
+clearTagLinks:
+DELETE FROM local_manga_tags WHERE tag_id = :tag_id;
+
+getFileMangaSource:
+SELECT source FROM mangas WHERE _id = :manga_id AND source IN (0, 1000000000001);

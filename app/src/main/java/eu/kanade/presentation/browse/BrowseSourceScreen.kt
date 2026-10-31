@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.HelpOutline
+import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material3.SnackbarDuration
@@ -33,6 +34,7 @@ import tachiyomi.domain.library.model.LibraryDisplayMode
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.source.model.StubSource
 import tachiyomi.i18n.MR
+import tachiyomi.i18n.kmk.KMR
 import tachiyomi.presentation.core.components.material.Scaffold
 import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.screens.EmptyScreen
@@ -100,8 +102,8 @@ fun BrowseSourceContent(
             actions = if (source is LocalSource /* SY --> */ && onLocalSourceHelpClick != null /* SY <-- */) {
                 persistentListOf(
                     EmptyScreenAction(
-                        stringRes = MR.strings.local_source_help_guide,
-                        icon = Icons.AutoMirrored.Outlined.HelpOutline,
+                        stringRes = if (source.id == LocalSource.PRIVATE_COLLECTION_ID) KMR.strings.private_collection_folder else MR.strings.local_source_help_guide,
+                        icon = if (source.id == LocalSource.PRIVATE_COLLECTION_ID) Icons.Outlined.FolderOpen else Icons.AutoMirrored.Outlined.HelpOutline,
                         onClick = onLocalSourceHelpClick,
                     ),
                 )

@@ -1,0 +1,20 @@
+CREATE TABLE local_tags (
+    id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    normalized_name TEXT NOT NULL UNIQUE
+);
+
+getAllTags:
+SELECT id, name, normalized_name
+FROM local_tags
+ORDER BY normalized_name;
+
+insertTag:
+INSERT OR IGNORE INTO local_tags(name, normalized_name)
+VALUES (:name, :normalized_name);
+
+updateTagName:
+UPDATE local_tags SET name = :name, normalized_name = :normalized_name WHERE id = :id;
+
+deleteTag:
+DELETE FROM local_tags WHERE id = :id;

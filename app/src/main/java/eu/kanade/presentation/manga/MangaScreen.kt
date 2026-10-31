@@ -168,6 +168,7 @@ fun MangaScreen(
     onEditFetchIntervalClicked: (() -> Unit)?,
     onMigrateClicked: (() -> Unit)?,
     onEditNotesClicked: () -> Unit,
+    onEditTagsClicked: (() -> Unit)?,
     // SY -->
     onMetadataViewerClicked: () -> Unit,
     onEditInfoClicked: () -> Unit,
@@ -244,6 +245,7 @@ fun MangaScreen(
             onEditIntervalClicked = onEditFetchIntervalClicked,
             onMigrateClicked = onMigrateClicked,
             onEditNotesClicked = onEditNotesClicked,
+            onEditTagsClicked = onEditTagsClicked,
             // SY -->
             onMetadataViewerClicked = onMetadataViewerClicked,
             onEditInfoClicked = onEditInfoClicked,
@@ -306,6 +308,7 @@ fun MangaScreen(
             onEditIntervalClicked = onEditFetchIntervalClicked,
             onMigrateClicked = onMigrateClicked,
             onEditNotesClicked = onEditNotesClicked,
+            onEditTagsClicked = onEditTagsClicked,
             // SY -->
             onMetadataViewerClicked = onMetadataViewerClicked,
             onEditInfoClicked = onEditInfoClicked,
@@ -378,6 +381,7 @@ private fun MangaScreenSmallImpl(
     onEditIntervalClicked: (() -> Unit)?,
     onMigrateClicked: (() -> Unit)?,
     onEditNotesClicked: () -> Unit,
+    onEditTagsClicked: (() -> Unit)?,
     // SY -->
     onMetadataViewerClicked: () -> Unit,
     onEditInfoClicked: () -> Unit,
@@ -483,8 +487,9 @@ private fun MangaScreenSmallImpl(
                 onClickRefresh = onRefresh,
                 onClickMigrate = onMigrateClicked,
                 onClickEditNotes = onEditNotesClicked,
+                onClickEditTags = onEditTagsClicked,
                 // SY -->
-                onClickEditInfo = onEditInfoClicked.takeIf { state.manga.favorite },
+                onClickEditInfo = onEditInfoClicked.takeIf { state.manga.favorite || state.manga.isLocal() },
                 // KMK -->
                 onClickSourceSettings = onClickSourceSettingsClicked,
                 onClearManga = onClearManga,
@@ -686,6 +691,7 @@ private fun MangaScreenSmallImpl(
                             onTagSearch = onTagSearch,
                             onCopyTagToClipboard = onCopyTagToClipboard,
                             onEditNotes = onEditNotesClicked,
+                            onEditTags = onEditTagsClicked,
                             // SY -->
                             doSearch = onSearch,
                             searchMetadataChips = remember(state.meta, state.source.id, state.manga.genre) {
@@ -838,6 +844,7 @@ private fun MangaScreenLargeImpl(
     onEditIntervalClicked: (() -> Unit)?,
     onMigrateClicked: (() -> Unit)?,
     onEditNotesClicked: () -> Unit,
+    onEditTagsClicked: (() -> Unit)?,
     // SY -->
     onMetadataViewerClicked: () -> Unit,
     onEditInfoClicked: () -> Unit,
@@ -934,9 +941,10 @@ private fun MangaScreenLargeImpl(
                 onClickRefresh = onRefresh,
                 onClickMigrate = onMigrateClicked,
                 onClickEditNotes = onEditNotesClicked,
+                onClickEditTags = onEditTagsClicked,
                 onCancelActionMode = { onAllChapterSelected(false) },
                 // SY -->
-                onClickEditInfo = onEditInfoClicked.takeIf { state.manga.favorite },
+                onClickEditInfo = onEditInfoClicked.takeIf { state.manga.favorite || state.manga.isLocal() },
                 // KMK -->
                 onClickSourceSettings = onClickSourceSettingsClicked,
                 onClearManga = onClearManga,
@@ -1118,6 +1126,7 @@ private fun MangaScreenLargeImpl(
                             onTagSearch = onTagSearch,
                             onCopyTagToClipboard = onCopyTagToClipboard,
                             onEditNotes = onEditNotesClicked,
+                            onEditTags = onEditTagsClicked,
                             // SY -->
                             doSearch = onSearch,
                             searchMetadataChips = remember(state.meta, state.source.id, state.manga.genre) {

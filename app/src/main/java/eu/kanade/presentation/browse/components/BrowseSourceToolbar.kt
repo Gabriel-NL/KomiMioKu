@@ -87,7 +87,7 @@ fun BrowseSourceToolbar(
                         if (isLocalSource) {
                             add(
                                 AppBar.OverflowAction(
-                                    title = stringResource(MR.strings.label_help),
+                                    title = stringResource(if (source?.id == LocalSource.PRIVATE_COLLECTION_ID) KMR.strings.private_collection_folder else MR.strings.label_help),
                                     onClick = onHelpClick,
                                 ),
                             )

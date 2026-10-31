@@ -1,16 +1,18 @@
 import org.jetbrains.kotlin.gradle.ExperimentalKotlinGradlePluginApi
 
 plugins {
-    id("mihon.library")
-    kotlin("multiplatform")
+    id("mihon.library.multiplatform")
     kotlin("plugin.serialization")
     id("com.github.ben-manes.versions")
 }
 
 kotlin {
-    androidTarget()
+    android {
+        namespace = "eu.kanade.tachiyomi.source"
+        optimization.consumerKeepRules.files.add(file("consumer-proguard.pro"))
+    }
     sourceSets {
-        val commonMain by getting {
+        val commonMain = getByName("commonMain") {
             dependencies {
                 api(kotlinx.serialization.json)
                 api(libs.injekt)
@@ -27,7 +29,7 @@ kotlin {
                 implementation(compose.runtime)
             }
         }
-        val androidMain by getting {
+        val androidMain = getByName("androidMain") {
             dependencies {
                 implementation(projects.core.common)
                 api(libs.preferencektx)
@@ -42,13 +44,5 @@ kotlin {
     @OptIn(ExperimentalKotlinGradlePluginApi::class)
     compilerOptions {
         freeCompilerArgs.add("-Xexpect-actual-classes")
-    }
-}
-
-android {
-    namespace = "eu.kanade.tachiyomi.source"
-
-    defaultConfig {
-        consumerProguardFile("consumer-proguard.pro")
     }
 }

@@ -5,10 +5,13 @@ import tachiyomi.domain.storage.service.StorageManager
 
 actual class LocalSourceFileSystem(
     private val storageManager: StorageManager,
+    private val privateCollection: Boolean = false,
+    private val customDirectory: UniFile? = null,
 ) {
 
     actual fun getBaseDirectory(): UniFile? {
-        return storageManager.getLocalSourceDirectory()
+        return customDirectory
+            ?: if (privateCollection) storageManager.getPrivateCollectionDirectory() else storageManager.getLocalSourceDirectory()
     }
 
     actual fun getFilesInBaseDirectory(): List<UniFile> {

@@ -1,16 +1,29 @@
 package mihon.buildlogic.tasks
 
-import org.gradle.api.Project
-import org.gradle.api.Task
-import org.gradle.api.tasks.TaskProvider
-import java.io.File
+import org.gradle.api.DefaultTask
+import org.gradle.api.file.ConfigurableFileCollection
+import org.gradle.api.file.DirectoryProperty
+import org.gradle.api.tasks.InputFiles
+import org.gradle.api.tasks.OutputDirectory
+import org.gradle.api.tasks.PathSensitive
+import org.gradle.api.tasks.PathSensitivity
+import org.gradle.api.tasks.TaskAction
+import org.gradle.work.DisableCachingByDefault
 
 private val emptyResourcesElement = "<resources>\\s*</resources>|<resources\\s*/>".toRegex()
 
-fun Project.getLocalesConfigTask(outputResourceDir: File): TaskProvider<Task> {
-    return tasks.register("generateLocalesConfig") {
-        val locales = fileTree("$projectDir/src/commonMain/moko-resources/")
-            .matching { include("**/strings.xml") }
+@DisableCachingByDefault(because = "Small generated locale list")
+abstract class LocalesConfigTask : DefaultTask() {
+    @get:InputFiles
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val stringFiles: ConfigurableFileCollection
+
+    @get:OutputDirectory
+    abstract val outputDirectory: DirectoryProperty
+
+    @TaskAction
+    fun generate() {
+        val locales = stringFiles.files
             .filterNot { it.readText().contains(emptyResourcesElement) }
             .map {
                 it.parentFile.name
@@ -28,7 +41,7 @@ fun Project.getLocalesConfigTask(outputResourceDir: File): TaskProvider<Task> {
         |</locale-config>
         """.trimMargin()
 
-        outputResourceDir.resolve("xml/locales_config.xml").apply {
+        outputDirectory.file("xml/locales_config.xml").get().asFile.apply {
             parentFile.mkdirs()
             writeText(content)
         }

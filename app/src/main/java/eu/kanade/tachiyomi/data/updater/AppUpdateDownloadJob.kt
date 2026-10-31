@@ -1,5 +1,8 @@
+@file:OptIn(DelicateCoroutinesApi::class)
+
 package eu.kanade.tachiyomi.data.updater
 
+import android.annotation.SuppressLint
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
@@ -32,6 +35,7 @@ import eu.kanade.tachiyomi.util.system.toast
 import eu.kanade.tachiyomi.util.system.workManager
 import exh.log.xLogE
 import exh.source.ExhPreferences
+import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.coroutineScope
@@ -51,6 +55,7 @@ import java.io.File
 import java.lang.ref.WeakReference
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.cancellation.CancellationException
+import kotlin.time.Duration.Companion.seconds
 
 class AppUpdateDownloadJob(private val context: Context, workerParams: WorkerParameters) :
     CoroutineWorker(context, workerParams) {
@@ -206,6 +211,7 @@ class AppUpdateDownloadJob(private val context: Context, workerParams: WorkerPar
     }
 
     // KMK -->
+    @SuppressLint("RequestInstallPackagesPolicy")
     @RequiresApi(31)
     private suspend fun startInstalling(file: File, title: String) {
         try {
@@ -240,7 +246,7 @@ class AppUpdateDownloadJob(private val context: Context, workerParams: WorkerPar
                 data.close()
             }
             launchUI {
-                delay(1000)
+                delay(1.seconds)
                 val hasNotification = context.notificationManager
                     .activeNotifications.any { it.id == Notifications.ID_APP_INSTALL }
                 // If the package manager crashes for whatever reason (china phone)
@@ -252,7 +258,7 @@ class AppUpdateDownloadJob(private val context: Context, workerParams: WorkerPar
             }
         } catch (error: Exception) {
             // Either install package can't be found (probably bots) or there's a security exception
-            // with the download manager. Nothing we can workaround.
+            // with the download manager. Nothing we can work around.
             context.toast(error.message)
             notifier.cancelInstallNotification()
             notifier.promptInstall(file.getUriCompat(context))

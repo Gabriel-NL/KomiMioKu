@@ -1,6 +1,7 @@
 package eu.kanade.tachiyomi.ui.browse.source
 
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.FilterList
 import androidx.compose.material.icons.outlined.TravelExplore
 import androidx.compose.material.icons.outlined._18UpRating
@@ -15,6 +16,7 @@ import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import eu.kanade.domain.source.model.installedExtension
+import eu.kanade.presentation.browse.CreateCollectionDialog
 import eu.kanade.presentation.browse.SourceCategoriesDialog
 import eu.kanade.presentation.browse.SourceOptionsDialog
 import eu.kanade.presentation.browse.SourcesScreen
@@ -54,6 +56,11 @@ fun Screen.sourcesTab(
                 title = stringResource(MR.strings.action_global_search),
                 icon = Icons.Outlined.TravelExplore,
                 onClick = { navigator.push(GlobalSearchScreen(smartSearchConfig?.origTitle ?: "")) },
+            ),
+            AppBar.Action(
+                title = stringResource(KMR.strings.action_add_collection),
+                icon = Icons.Outlined.Add,
+                onClick = { screenModel.showCreateCollectionDialog() },
             ),
             // KMK -->
             AppBar.Action(
@@ -146,15 +153,25 @@ fun Screen.sourcesTab(
                         onDismissRequest = screenModel::closeDialog,
                     )
                 }
+                is SourcesScreenModel.Dialog.CreateCollection -> {
+                    CreateCollectionDialog(
+                        onDismissRequest = screenModel::closeDialog,
+                        onCreate = screenModel::createCollection,
+                    )
+                }
                 null -> Unit
             }
 
             val internalErrString = stringResource(MR.strings.internal_error)
+            val storageMissingErrString = stringResource(KMR.strings.error_storage_location_missing)
             LaunchedEffect(Unit) {
                 screenModel.events.collectLatest { event ->
                     when (event) {
                         SourcesScreenModel.Event.FailedFetchingSources -> {
                             launch { snackbarHostState.showSnackbar(internalErrString) }
+                        }
+                        SourcesScreenModel.Event.StorageLocationMissing -> {
+                            launch { snackbarHostState.showSnackbar(storageMissingErrString) }
                         }
                     }
                 }

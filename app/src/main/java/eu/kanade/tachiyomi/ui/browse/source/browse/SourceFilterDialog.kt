@@ -27,6 +27,7 @@ import kotlinx.collections.immutable.toImmutableList
 import tachiyomi.core.common.preference.TriState
 import tachiyomi.domain.source.model.EXHSavedSearch
 import tachiyomi.i18n.MR
+import tachiyomi.i18n.kmk.KMR
 import tachiyomi.presentation.core.components.CheckboxItem
 import tachiyomi.presentation.core.components.CollapsibleBox
 import tachiyomi.presentation.core.components.HeadingItem
@@ -37,6 +38,8 @@ import tachiyomi.presentation.core.components.TextItem
 import tachiyomi.presentation.core.components.TriStateItem
 import tachiyomi.presentation.core.components.material.Button
 import tachiyomi.presentation.core.i18n.stringResource
+import tachiyomi.source.local.filter.CollectionOptions
+import tachiyomi.source.local.filter.CollectionValues
 
 @Composable
 fun SourceFilterDialog(
@@ -125,8 +128,36 @@ fun SourceFilterDialog(
                 )
             }
 
-            items(filters) {
-                FilterItem(it, updateFilters /* SY --> */, startExpanded /* SY <-- */)
+            val hasLocalFilters = filters.any { it is CollectionValues || it is CollectionOptions }
+            if (hasLocalFilters) {
+                item {
+                    Text(
+                        text = stringResource(KMR.strings.local_choice_cycle_help),
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
+                    )
+                }
+            }
+
+            val blacklists = filters.filterIsInstance<CollectionValues>()
+                .filter { it.excluded }.associateBy { it.field }
+            items(
+                filters.filterNot {
+                    (it is CollectionValues && it.excluded) ||
+                        (hasLocalFilters && it is Filter.Header && it.name.isEmpty())
+                },
+            ) { filter ->
+                when {
+                    filter is CollectionValues && blacklists[filter.field] != null -> {
+                        LocalCollectionValueFilter(
+                            included = filter,
+                            excluded = blacklists.getValue(filter.field),
+                            onUpdate = updateFilters,
+                        )
+                    }
+                    filter is CollectionOptions -> LocalCollectionOptionFilter(filter, updateFilters)
+                    else -> FilterItem(filter, updateFilters, startExpanded)
+                }
             }
         }
     }

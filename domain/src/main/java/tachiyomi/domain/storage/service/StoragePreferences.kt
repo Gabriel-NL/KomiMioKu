@@ -9,6 +9,12 @@ class StoragePreferences(
     private val preferenceStore: PreferenceStore,
 ) {
 
+    // Empty uses the private source's dedicated MinhaColecao subfolder.
+    fun privateCollectionDirectory() = preferenceStore.getString(
+        Preference.appStateKey("private_collection_dir"),
+        "",
+    )
+
     // Storing URI of the directory (either file:/// or storage://
     fun baseStorageDirectory() = preferenceStore.getString(Preference.appStateKey("storage_dir"), folderProvider.path())
 }

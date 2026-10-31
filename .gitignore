@@ -21,3 +21,9 @@ local.properties
 /app/google-services.json
 *.jks
 app/standard/preview/*
+
+# personal
+Specifications.md
+
+# Discarded reference files
+/trash/
