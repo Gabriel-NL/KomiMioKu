@@ -16,6 +16,7 @@ import kotlinx.collections.immutable.persistentListOf
 import tachiyomi.i18n.MR
 import tachiyomi.i18n.kmk.KMR
 import tachiyomi.presentation.core.i18n.stringResource
+import androidx.compose.material.icons.outlined.Label
 
 @Composable
 fun BulkSelectionToolbar(
@@ -25,6 +26,7 @@ fun BulkSelectionToolbar(
     onChangeCategoryClick: () -> Unit,
     onSelectAll: (() -> Unit)? = null,
     onReverseSelection: (() -> Unit)? = null,
+    onTagsClick: (() -> Unit)? = null,
 ) {
     AppBar(
         titleContent = { Text(text = "$selectedCount") },
@@ -73,6 +75,15 @@ fun BulkSelectionToolbar(
                                 },
                             ),
                         )
+                        if (selectedCount > 0 && onTagsClick != null) {
+                            add(
+                                AppBar.Action(
+                                    title = "Manage tags",
+                                    icon = Icons.Outlined.Label,
+                                    onClick = onTagsClick,
+                                ),
+                            )
+                        }
                     }
                 }.build(),
             )
