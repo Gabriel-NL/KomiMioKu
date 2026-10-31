@@ -85,6 +85,10 @@ import tachiyomi.presentation.core.screens.LoadingScreen
 import tachiyomi.source.local.LocalSource
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 
 data class BrowseSourceScreen(
     val sourceId: Long,
@@ -171,6 +175,7 @@ data class BrowseSourceScreen(
         // KMK -->
         val bulkFavoriteScreenModel = rememberScreenModel { BulkFavoriteScreenModel() }
         val bulkFavoriteState by bulkFavoriteScreenModel.state.collectAsState()
+        var showTagsDialog by remember { mutableStateOf(false) }
 
         BackHandler(enabled = bulkFavoriteState.selectionMode) {
             bulkFavoriteScreenModel.backHandler()
@@ -203,6 +208,7 @@ data class BrowseSourceScreen(
                             isRunning = bulkFavoriteState.isRunning,
                             onClickClearSelection = bulkFavoriteScreenModel::toggleSelectionMode,
                             onChangeCategoryClick = bulkFavoriteScreenModel::addFavorite,
+                            onTagsClick = { showTagsDialog = true },
                             onSelectAll = {
                                 mangaList.itemSnapshotList.items
                                     .map { it.value.first }
@@ -401,6 +407,21 @@ data class BrowseSourceScreen(
                 // KMK -->
                 selection = bulkFavoriteState.selection,
                 // KMK <--
+            )
+        }
+
+        if (showTagsDialog) {
+            AlertDialog(
+                onDismissRequest = { showTagsDialog = false },
+                title = { Text("Manage tags") },
+                text = {
+                    Text("${bulkFavoriteState.selection.size} manga(s) selected")
+                },
+                confirmButton = {
+                    TextButton(onClick = { showTagsDialog = false }) {
+                        Text("Close")
+                    }
+                },
             )
         }
 
