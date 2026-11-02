@@ -253,4 +253,6 @@
     <string name="manager_import_hint">Escolha uma pasta de mangá ou um ZIP/CBZ. Arquivos existentes com conteúdo diferente não são substituídos na importação ou reparo. A origem da importação é preservada.</string>
     <string name="manager_help">Transferências entre PC e celular usam backups de coleção pelo seletor de arquivos do sistema. A prévia de restauração mostra os arquivos conflitantes. Metadados e tags são salvos no banco do app. ADB do Windows, limpeza de relatórios e migração de mapas antigos continuam sendo utilitários do PC.</string>
     <string name="manager_import_batch">Importar pasta contendo vários mangás</string>
+    <string name="local_sort_ascending">Crescente</string>
+    <string name="local_sort_descending">Decrescente</string>
 </resources>

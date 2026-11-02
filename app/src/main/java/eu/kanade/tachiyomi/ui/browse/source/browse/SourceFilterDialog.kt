@@ -40,6 +40,7 @@ import tachiyomi.presentation.core.components.material.Button
 import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.source.local.filter.CollectionOptions
 import tachiyomi.source.local.filter.CollectionValues
+import tachiyomi.source.local.filter.OrderBy
 
 @Composable
 fun SourceFilterDialog(
@@ -223,6 +224,25 @@ private fun FilterItem(filter: Filter<*>, onUpdate: () -> Unit/* SY --> */, star
                 filter.state = it
                 onUpdate()
             }
+        }
+        is OrderBy -> {
+            val selection = filter.state ?: Filter.Sort.Selection(0, true)
+            SelectItem(
+                label = filter.name,
+                options = filter.values,
+                selectedIndex = selection.index.coerceIn(filter.values.indices),
+            ) { index ->
+                filter.state = Filter.Sort.Selection(index, index == 0)
+                onUpdate()
+            }
+            SortItem(
+                label = stringResource(if (selection.ascending) KMR.strings.local_sort_ascending else KMR.strings.local_sort_descending),
+                sortDescending = !selection.ascending,
+                onClick = {
+                    filter.state = selection.copy(ascending = !selection.ascending)
+                    onUpdate()
+                },
+            )
         }
         is Filter.Sort -> {
             CollapsibleBox(

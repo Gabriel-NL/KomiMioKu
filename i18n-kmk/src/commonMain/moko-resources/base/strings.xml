@@ -364,4 +364,6 @@
     <string name="manager_import_hint">Choose one manga folder or one ZIP/CBZ. Existing differing files are never replaced by import or repair. Original import files are preserved.</string>
     <string name="manager_help">Transfers between PC and phone use collection backups through the system file picker. Restore previews show conflicting files. Metadata and tags are saved in the app database. Windows ADB, report cleanup and old rename-map migration remain PC utilities.</string>
     <string name="manager_import_batch">Import folder containing multiple manga</string>
+    <string name="local_sort_ascending">Ascending</string>
+    <string name="local_sort_descending">Descending</string>
 </resources>

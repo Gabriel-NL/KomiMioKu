@@ -52,6 +52,7 @@ import tachiyomi.domain.localtag.model.CollectionTagChanges
 import tachiyomi.domain.localtag.model.CollectionTagEdit
 import tachiyomi.domain.localtag.model.IndexedLocalManga
 import tachiyomi.domain.localtag.model.LocalChapterMetadata
+import tachiyomi.domain.localtag.model.LocalCollectionOrder
 import tachiyomi.domain.localtag.model.LocalMangaMetadata
 import tachiyomi.domain.localtag.model.LocalMetadataDocument
 import tachiyomi.domain.localtag.model.LocalMetadataStamp
@@ -59,6 +60,7 @@ import tachiyomi.domain.localtag.model.applyCollectionTagEdits
 import tachiyomi.domain.localtag.model.canRemoveLegacyMetadata
 import tachiyomi.domain.localtag.model.canonicalLocalTagName
 import tachiyomi.domain.localtag.model.localMetadataFingerprint
+import tachiyomi.domain.localtag.model.sortLocalCollection
 import tachiyomi.domain.localtag.repository.LocalCollectionIndexRepository
 import tachiyomi.domain.localtag.repository.LocalMetadataRepository
 import tachiyomi.domain.localtag.repository.LocalTagRepository
@@ -194,17 +196,11 @@ open class LocalSource(
             metadataMatches && matchesCollectionValues(tags, formatIncluded, formatExcluded) &&
                 (!readingActive || matchesCollectionValues(setOf(reading[entry.url] ?: "unread"), readingIncluded, readingExcluded))
         }
-        // Sort only accepted metadata entries, without touching their folders or covers.
-        filters.forEach { filter ->
-            accepted = when (filter) {
-                is OrderBy.Popular -> if (filter.state!!.ascending) {
-                    accepted.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.url })
-                } else {
-                    accepted.sortedWith(compareByDescending(String.CASE_INSENSITIVE_ORDER) { it.url })
-                }
-                is OrderBy.Latest -> if (filter.state!!.ascending) accepted.sortedBy { it.modified } else accepted.sortedByDescending { it.modified }
-                else -> accepted
-            }
+        // Order only matching indexed entries; the dropdown state chooses the actual field.
+        filters.filterIsInstance<OrderBy>().firstOrNull()?.let { filter ->
+            val selection = filter.state ?: eu.kanade.tachiyomi.source.model.Filter.Sort.Selection(0, true)
+            val order = LocalCollectionOrder.entries.getOrElse(selection.index) { LocalCollectionOrder.TITLE }
+            accepted = sortLocalCollection(accepted, order, selection.ascending)
         }
         MangasPage(accepted.map { entry -> entry.toSourceManga() }, false)
     }
