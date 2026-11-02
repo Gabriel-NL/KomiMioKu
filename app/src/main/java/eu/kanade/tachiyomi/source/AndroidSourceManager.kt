@@ -34,6 +34,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import tachiyomi.domain.manga.interactor.GetMergedReferencesById
@@ -43,7 +44,6 @@ import tachiyomi.domain.source.repository.StubSourceRepository
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.domain.storage.service.StorageManager
 import tachiyomi.source.local.LocalSource
-import tachiyomi.source.local.PrivateCollectionSource
 import tachiyomi.source.local.image.LocalCoverManager
 import tachiyomi.source.local.io.LocalSourceFileSystem
 import uy.kohesive.injekt.Injekt
@@ -88,19 +88,9 @@ class AndroidSourceManager(
             scope,
         )
     }
-    private val privateCollectionSource by lazy {
-        val files = LocalSourceFileSystem(Injekt.get<StorageManager>(), privateCollection = true)
-        PrivateCollectionSource(
-            context,
-            files,
-            LocalCoverManager(context, files),
-            sourcePreferences.allowLocalSourceHiddenFolders()::get,
-            scope,
-        )
-    }
     // KMK <--
 
-    private fun getCustomLocalSources(): List<LocalSource> {
+    private suspend fun getCustomLocalSources(): List<LocalSource> {
         val storageManager = Injekt.get<StorageManager>()
         val customDir = storageManager.getCustomLocalSourcesDirectory() ?: return emptyList()
         val folders = customDir.listFiles()?.filter { it.isDirectory }.orEmpty()
@@ -108,6 +98,7 @@ class AndroidSourceManager(
         return folders.mapNotNull { folder ->
             val folderName = folder.name ?: return@mapNotNull null
             val sourceId = FileSourceIds.getCustomSourceId(folderName)
+            Injekt.get<tachiyomi.domain.localtag.repository.LocalTagRepository>().ensureCollection(sourceId)
             val files = LocalSourceFileSystem(storageManager, customDirectory = folder)
             LocalSource(
                 context = context,
@@ -133,14 +124,14 @@ class AndroidSourceManager(
                 .combine(
                     exhPreferences.isHentaiEnabled().changes(),
                 ) { (a, b), c -> Triple(a, b, c) }
-                .combine(storageManager.changes) { triple, _ -> triple }
+                // Storage changes are events: seed the initial load before waiting for folder changes.
+                .combine(storageManager.changes.onStart { emit(Unit) }) { triple, _ -> triple }
                 // KMK <--
                 // SY <--
                 .collectLatest { (extensions, enableExhentai/* KMK --> */, isHentaiEnabled/* KMK <-- */) ->
                     val mutableMap = ConcurrentHashMap<Long, Source>(
                         mapOf(
                             LocalSource.ID to localSource,
-                            LocalSource.PRIVATE_COLLECTION_ID to privateCollectionSource,
                         ),
                     ).apply {
                         getCustomLocalSources().forEach { source ->

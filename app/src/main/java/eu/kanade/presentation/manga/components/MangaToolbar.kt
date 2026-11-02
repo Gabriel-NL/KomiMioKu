@@ -51,6 +51,7 @@ fun MangaToolbar(
     onClickEditTags: (() -> Unit)?,
     // SY -->
     onClickEditInfo: (() -> Unit)?,
+    onRenameLocal: (() -> Unit)? = null,
     // KMK -->
     onClickRelatedMangas: (() -> Unit)?,
     onClickSourceSettings: (() -> Unit)?,
@@ -201,6 +202,9 @@ fun MangaToolbar(
                                 onClick = onClickMerge,
                             ),
                         )
+                    }
+                    if (onRenameLocal != null) {
+                        add(AppBar.OverflowAction(title = stringResource(KMR.strings.collection_edit_rename), onClick = onRenameLocal))
                     }
                     if (onClickEditInfo != null) {
                         add(

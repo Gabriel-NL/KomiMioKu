@@ -25,8 +25,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
@@ -49,7 +51,6 @@ import eu.kanade.presentation.category.components.ChangeCategoryDialog
 import eu.kanade.presentation.components.BulkSelectionToolbar
 import eu.kanade.presentation.manga.DuplicateMangaDialog
 import eu.kanade.presentation.more.settings.screen.SettingsEhScreen
-import eu.kanade.presentation.more.settings.screen.SettingsPrivateCollectionScreen
 import eu.kanade.presentation.util.AssistContentScreen
 import eu.kanade.presentation.util.Screen
 import eu.kanade.tachiyomi.source.ConfigurableSource
@@ -75,6 +76,7 @@ import mihon.feature.migration.dialog.MigrateMangaDialog
 import mihon.presentation.core.util.collectAsLazyPagingItems
 import tachiyomi.core.common.Constants
 import tachiyomi.core.common.util.lang.launchIO
+import tachiyomi.domain.localtag.model.CollectionTagChanges
 import tachiyomi.domain.source.model.StubSource
 import tachiyomi.i18n.MR
 import tachiyomi.i18n.kmk.KMR
@@ -85,10 +87,6 @@ import tachiyomi.presentation.core.screens.LoadingScreen
 import tachiyomi.source.local.LocalSource
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.TextButton
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 
 data class BrowseSourceScreen(
     val sourceId: Long,
@@ -155,11 +153,7 @@ data class BrowseSourceScreen(
         val snackbarHostState = remember { SnackbarHostState() }
 
         val onHelpClick: () -> Unit = {
-            if (sourceId == LocalSource.PRIVATE_COLLECTION_ID) {
-                navigator.push(SettingsPrivateCollectionScreen)
-            } else {
-                uriHandler.openUri(LocalSource.HELP_URL)
-            }
+            uriHandler.openUri(LocalSource.HELP_URL)
         }
         val onWebViewClick = f@{
             val source = screenModel.source as? HttpSource ?: return@f
@@ -176,6 +170,7 @@ data class BrowseSourceScreen(
         val bulkFavoriteScreenModel = rememberScreenModel { BulkFavoriteScreenModel() }
         val bulkFavoriteState by bulkFavoriteScreenModel.state.collectAsState()
         var showTagsDialog by remember { mutableStateOf(false) }
+        var fileEditMerge by remember { mutableStateOf<Boolean?>(null) }
 
         BackHandler(enabled = bulkFavoriteState.selectionMode) {
             bulkFavoriteScreenModel.backHandler()
@@ -188,6 +183,13 @@ data class BrowseSourceScreen(
 
         // KMK -->
         val mangaList = screenModel.mangaPagerFlowFlow.collectAsLazyPagingItems()
+        val tagChanges = remember(sourceId) { CollectionTagChanges.observe(sourceId) }
+        val tagRevision by tagChanges.collectAsState(initial = CollectionTagChanges.current(sourceId))
+        LaunchedEffect(mangaList, tagRevision, showTagsDialog) {
+            // Refresh only the results: retain the current query, filters and sort order.
+            // Defer bulk changes until the dialog closes, avoiding one rescan per manga.
+            if (!showTagsDialog && screenModel.consumeTagChanges(tagRevision)) mangaList.refresh()
+        }
 
         val isHentaiEnabled: Boolean = Injekt.get<ExhPreferences>().isHentaiEnabled().get()
         val isConfigurableSource = screenModel.source.anyIs<ConfigurableSource>() ||
@@ -208,7 +210,9 @@ data class BrowseSourceScreen(
                             isRunning = bulkFavoriteState.isRunning,
                             onClickClearSelection = bulkFavoriteScreenModel::toggleSelectionMode,
                             onChangeCategoryClick = bulkFavoriteScreenModel::addFavorite,
-                            onTagsClick = { showTagsDialog = true },
+                            onTagsClick = if (screenModel.source is LocalSource) ({ showTagsDialog = true }) else null,
+                            onMergeFilesClick = if (screenModel.source is LocalSource) ({ fileEditMerge = true }) else null,
+                            onRenameFilesClick = if (screenModel.source is LocalSource) ({ fileEditMerge = false }) else null,
                             onSelectAll = {
                                 mangaList.itemSnapshotList.items
                                     .map { it.value.first }
@@ -410,19 +414,30 @@ data class BrowseSourceScreen(
             )
         }
 
+        fileEditMerge?.let { merge ->
+            (screenModel.source as? LocalSource)?.let { source ->
+                CollectionFileEditDialog(
+                    source,
+                    bulkFavoriteState.selection,
+                    merge,
+                    onDismiss = { fileEditMerge = null },
+                    onDone = {
+                        fileEditMerge = null
+                        bulkFavoriteScreenModel.toggleSelectionMode(false)
+                        mangaList.refresh()
+                    },
+                )
+            }
+        }
+
         if (showTagsDialog) {
-            AlertDialog(
-                onDismissRequest = { showTagsDialog = false },
-                title = { Text("Manage tags") },
-                text = {
-                    Text("${bulkFavoriteState.selection.size} manga(s) selected")
-                },
-                confirmButton = {
-                    TextButton(onClick = { showTagsDialog = false }) {
-                        Text("Close")
-                    }
-                },
-            )
+            (screenModel.source as? LocalSource)?.let { localSource ->
+                BulkMangaTagsDialog(
+                    source = localSource,
+                    mangas = bulkFavoriteState.selection,
+                    onDismiss = { showTagsDialog = false },
+                )
+            }
         }
 
         val onDismissRequest = { screenModel.setDialog(null) }

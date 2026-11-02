@@ -15,12 +15,15 @@ import eu.kanade.tachiyomi.util.lang.compareToCaseInsensitiveNaturalOrder
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.supervisorScope
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.decodeFromStream
 import logcat.LogPriority
@@ -44,13 +47,21 @@ import tachiyomi.core.metadata.comicinfo.getComicInfo
 import tachiyomi.core.metadata.tachiyomi.MangaDetails
 import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
 import tachiyomi.domain.chapter.service.ChapterRecognition
+import tachiyomi.domain.localtag.model.CollectionTagChanges
+import tachiyomi.domain.localtag.model.CollectionTagEdit
+import tachiyomi.domain.localtag.model.IndexedLocalManga
+import tachiyomi.domain.localtag.model.LocalMetadataStamp
+import tachiyomi.domain.localtag.model.applyCollectionTagEdits
 import tachiyomi.domain.localtag.model.canonicalLocalTagName
+import tachiyomi.domain.localtag.model.localMetadataFingerprint
+import tachiyomi.domain.localtag.repository.LocalCollectionIndexRepository
 import tachiyomi.domain.localtag.repository.LocalTagRepository
 import tachiyomi.domain.manga.interactor.GetManga
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.source.model.FileSourceIds
 import tachiyomi.i18n.MR
 import tachiyomi.i18n.kmk.KMR
+import tachiyomi.source.local.filter.CollectionIndexLocks
 import tachiyomi.source.local.filter.CollectionMetadataCache
 import tachiyomi.source.local.filter.CollectionOptions
 import tachiyomi.source.local.filter.CollectionValues
@@ -64,13 +75,17 @@ import tachiyomi.source.local.io.Archive
 import tachiyomi.source.local.io.Format
 import tachiyomi.source.local.io.LocalSourceFileSystem
 import tachiyomi.source.local.metadata.COLLECTION_TAG_CATALOG
+import tachiyomi.source.local.metadata.LOCAL_CHAPTER_TITLES
+import tachiyomi.source.local.metadata.LocalChapterTitles
 import tachiyomi.source.local.metadata.MAX_TAG_CATALOG_BYTES
 import tachiyomi.source.local.metadata.decodeCollectionTagCatalog
 import tachiyomi.source.local.metadata.fillMetadata
+import tachiyomi.source.local.metadata.localChapterOrder
 import tachiyomi.source.local.metadata.withCollectionTags
 import uy.kohesive.injekt.injectLazy
 import java.io.InputStream
 import java.nio.charset.StandardCharsets
+import java.util.concurrent.atomic.AtomicLong
 import kotlin.time.Duration.Companion.days
 import tachiyomi.domain.source.model.Source as DomainSource
 
@@ -91,9 +106,12 @@ open class LocalSource(
     private val getManga: GetManga by injectLazy()
     private val getChapters: GetChaptersByMangaId by injectLazy()
     private val localTags: LocalTagRepository by injectLazy()
+    private val collectionIndex: LocalCollectionIndexRepository by injectLazy()
+    private val lastVerification = AtomicLong(0L)
     private val collectionMetadata by lazy {
         CollectionMetadataCache(
             scope = applicationScope,
+            mutex = CollectionIndexLocks.forSource(id),
             tagUpdates = localTags.observeAll(id).map { tags -> tags.map { it.name } },
             collectionKey = {
                 val directory = fileSystem.getBaseDirectory()
@@ -133,54 +151,7 @@ open class LocalSource(
         } else {
             0L
         }
-        // SY -->
-        val allowLocalSourceHiddenFolders = allowHiddenFiles()
-        // SY <--
-
-        var mangaDirs = fileSystem.getFilesInBaseDirectory()
-            // Filter out files that are hidden and is not a folder
-            .filter {
-                it.isDirectory &&
-                    // SY -->
-                    (
-                        !it.name.orEmpty().startsWith('.') ||
-                            allowLocalSourceHiddenFolders
-                        )
-                // SY <--
-            }
-            .distinctBy { it.name }
-            .filter {
-                if (lastModifiedLimit == 0L && query.isBlank()) {
-                    true
-                } else if (lastModifiedLimit == 0L) {
-                    it.name.orEmpty().contains(query, ignoreCase = true)
-                } else {
-                    it.lastModified() >= lastModifiedLimit
-                }
-            }
-
-        filters.forEach { filter ->
-            when (filter) {
-                is OrderBy.Popular -> {
-                    mangaDirs = if (filter.state!!.ascending) {
-                        mangaDirs.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name.orEmpty() })
-                    } else {
-                        mangaDirs.sortedWith(compareByDescending(String.CASE_INSENSITIVE_ORDER) { it.name.orEmpty() })
-                    }
-                }
-                is OrderBy.Latest -> {
-                    mangaDirs = if (filter.state!!.ascending) {
-                        mangaDirs.sortedBy(UniFile::lastModified)
-                    } else {
-                        mangaDirs.sortedByDescending(UniFile::lastModified)
-                    }
-                }
-                else -> {
-                    /* Do nothing */
-                }
-            }
-        }
-
+        val entries = indexedEntries()
         val valueFilters = filters.filterIsInstance<CollectionValues>()
         val options = filters.filterIsInstance<CollectionOptions>().associate { it.field to it.selections() }
         val (formatIncluded, formatExcluded) = options[CollectionOptions.Field.FORMAT] ?: (emptySet<String>() to emptySet())
@@ -193,59 +164,53 @@ open class LocalSource(
                 .flatMap { it.selections() }.toSet()
             included to excluded
         }
-        val needsMetadata = selections.values.any { (included, excluded) ->
-            included.isNotEmpty() || excluded.isNotEmpty()
-        } || formatIncluded.isNotEmpty() || formatExcluded.isNotEmpty()
-
-        val mangas = mangaDirs
-            .map { mangaDir ->
-                async {
-                    SManga.create().apply {
-                        title = mangaDir.name.orEmpty()
-                        url = mangaDir.name.orEmpty()
-
-                        // Try to find the cover
-                        coverManager.find(mangaDir.name.orEmpty())?.let {
-                            thumbnail_url = it.uri.toString()
-                        }
-                    }
-                }
-            }
-            .awaitAll()
-
-        // Load metadata only when needed. Do not parse every archive during ordinary browsing.
-        // Sequential filtering bounds open files and memory for large collections.
-        val matching = mangas.filter { manga ->
-            if (needsMetadata) {
-                getMangaDetails(manga)
-            }
-            val tags = parseCollectionValues(manga.genre)
+        val reading = if (readingActive) collectionIndex.readingStates(id) else emptyMap()
+        var accepted = entries.filter { entry ->
+            if (!allowHiddenFiles() && entry.url.startsWith('.')) return@filter false
+            if (lastModifiedLimit == 0L && query.isNotBlank() && !entry.url.contains(query, ignoreCase = true)) return@filter false
+            if (lastModifiedLimit != 0L && entry.modified < lastModifiedLimit) return@filter false
+            val tags = parseCollectionValues(entry.genre)
             val metadataMatches = CollectionValues.Field.entries.all { field ->
                 val values = when (field) {
                     CollectionValues.Field.TAGS -> tags
-                    CollectionValues.Field.AUTHORS -> parseCollectionValues(manga.author)
+                    CollectionValues.Field.AUTHORS -> parseCollectionValues(entry.author)
                 }
                 val (included, excluded) = selections.getValue(field)
                 matchesCollectionValues(values, included, excluded)
             }
-            val formatMatches = matchesCollectionValues(tags, formatIncluded, formatExcluded)
-            val readingMatches = if (!readingActive || !metadataMatches || !formatMatches) {
-                true
-            } else {
-                val stored = getManga.await(manga.url, id)
-                val chapters = stored?.let { getChapters.await(it.id) }.orEmpty()
-                matchesCollectionValues(setOf(collectionReadingKey(chapters)), readingIncluded, readingExcluded)
-            }
-            metadataMatches && formatMatches && readingMatches
+            metadataMatches && matchesCollectionValues(tags, formatIncluded, formatExcluded) &&
+                (!readingActive || matchesCollectionValues(setOf(reading[entry.url] ?: "unread"), readingIncluded, readingExcluded))
         }
-        MangasPage(matching, false)
+        // Sort only accepted metadata entries, without touching their folders or covers.
+        filters.forEach { filter ->
+            accepted = when (filter) {
+                is OrderBy.Popular -> if (filter.state!!.ascending) {
+                    accepted.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.url })
+                } else {
+                    accepted.sortedWith(compareByDescending(String.CASE_INSENSITIVE_ORDER) { it.url })
+                }
+                is OrderBy.Latest -> if (filter.state!!.ascending) accepted.sortedBy { it.modified } else accepted.sortedByDescending { it.modified }
+                else -> accepted
+            }
+        }
+        MangasPage(accepted.map { entry -> entry.toSourceManga() }, false)
     }
 
     // SY -->
     /** Save tags at series level, preserving the rest of ComicInfo and every chapter. */
-    suspend fun updateMangaTags(manga: SManga, mangaId: Long, tags: List<String>): List<String> = withIOContext {
-        val names = collectionTagNames(collectionTagNames(tags).map(::canonicalLocalTagName))
-        collectionMetadata.invalidate {
+    suspend fun updateMangaTags(manga: SManga, mangaId: Long, tags: List<String>): List<String> =
+        editMangaTags(manga, mangaId) { tags }
+
+    suspend fun applyMangaTagEdits(manga: SManga, mangaId: Long, edits: List<CollectionTagEdit>): List<String> =
+        editMangaTags(manga, mangaId) { existing -> applyCollectionTagEdits(existing, edits) }
+
+    private suspend fun editMangaTags(
+        manga: SManga,
+        mangaId: Long,
+        transform: (List<String>) -> List<String>,
+    ): List<String> = withIOContext {
+        var names = emptyList<String>()
+        collectionMetadata.invalidate(rescan = false) {
             val directory = fileSystem.getMangaDirectory(manga.url) ?: error("Local manga folder is unavailable")
             val files = directory.listFiles().orEmpty()
             val plain = files.firstOrNull { it.name == COMIC_INFO_FILE }
@@ -262,6 +227,8 @@ open class LocalSource(
                     check(!failed) { "Could not read existing local metadata" }
                     details.getComicInfo()
                 }
+                val current = collectionTagNames(listOfNotNull(original.genre?.value, original.tags?.value, original.categories?.value))
+                names = collectionTagNames(collectionTagNames(transform(current)).map(::canonicalLocalTagName))
                 val updated = original.withCollectionTags(names)
                 checkNotNull(
                     copyComicInfoFile(
@@ -270,6 +237,13 @@ open class LocalSource(
                         plain == null && reader?.encrypted == true,
                     ),
                 ) { "Could not write local ComicInfo metadata" }
+                val indexed = SManga.create().apply {
+                    url = manga.url
+                    title = manga.title
+                    copyFromComicInfo(updated)
+                }
+                CollectionTagChanges.markDirty(id)
+                updateIndexedManga(indexed)
             }
             localTags.replaceMangaTags(mangaId, names)
         }
@@ -333,10 +307,13 @@ open class LocalSource(
     // Manga details related
     private suspend fun getMangaDetails(
         manga: SManga,
+        findCover: Boolean = true,
         onMetadataError: (() -> Unit)? = null,
     ): SManga = withIOContext {
-        coverManager.find(manga.url)?.let {
-            manga.thumbnail_url = it.uri.toString()
+        if (findCover) {
+            coverManager.find(manga.url)?.let {
+                manga.thumbnail_url = it.uri.toString()
+            }
         }
 
         // Augment manga details based on metadata files
@@ -464,7 +441,7 @@ open class LocalSource(
         } else {
             // SY <--
             return folder.createFile(COMIC_INFO_FILE)?.apply {
-                openOutputStream().use { outputStream ->
+                checkNotNull(context.contentResolver.openOutputStream(uri, "wt")).use { outputStream ->
                     comicInfoFileStream.use { it.copyTo(outputStream) }
                 }
             }
@@ -491,7 +468,16 @@ open class LocalSource(
 
     // Chapters
     private suspend fun getChapterList(manga: SManga): List<SChapter> = withIOContext {
-        val chapters = fileSystem.getFilesInMangaDirectory(manga.url)
+        val files = fileSystem.getFilesInMangaDirectory(manga.url)
+        val overrides = files.firstOrNull { it.name == LOCAL_CHAPTER_TITLES }?.let { file ->
+            require(file.length() <= 4 * 1024 * 1024) { "Chapter title catalog is too large" }
+            file.openInputStream().use { stream ->
+                json.decodeFromString<LocalChapterTitles>(stream.readBytes().toString(Charsets.UTF_8)).also {
+                    require(it.version == 1)
+                }.chapters
+            }
+        }.orEmpty()
+        val chapters = files
             // Only keep supported formats
             .filterNot { it.name.orEmpty().startsWith('.') }
             .filter { it.isDirectory || Archive.isSupported(it) || it.extension.equals("epub", true) }
@@ -518,11 +504,13 @@ open class LocalSource(
                             setChapterDetailsFromComicInfoFile(stream, this)
                         }
                     }
+                    overrides[chapterFile.name]?.let { override ->
+                        name = override.name
+                        chapter_number = override.number
+                    }
                 }
             }
-            .sortedWith { c1, c2 ->
-                c2.name.compareToCaseInsensitiveNaturalOrder(c1.name)
-            }
+            .sortedWith(localChapterOrder(overrides))
 
         // Copy the cover from the first chapter found if not available
         if (manga.thumbnail_url.isNullOrBlank()) {
@@ -534,35 +522,123 @@ open class LocalSource(
         chapters
     }
 
-    /** Runs in the process scope, independently of any filter dialog. */
+    /** Show persisted entries immediately; verify child files off the browsing path. */
     fun preloadCollectionMetadata() {
-        collectionMetadata.preload()
+        applicationScope.launch {
+            try {
+                fileSystem.getBaseDirectory()?.let { collectionIndex.load(id, it.uri.toString()) }
+                requestIndexVerification(force = true)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                logcat(LogPriority.ERROR, e) { "Could not hydrate collection index" }
+            }
+        }
+    }
+
+    private fun requestIndexVerification(force: Boolean = false) {
+        val now = System.currentTimeMillis()
+        val previous = lastVerification.get()
+        if ((force || now - previous > 30000L) && lastVerification.compareAndSet(previous, now)) {
+            collectionMetadata.preload(force = true)
+        }
+    }
+
+    private suspend fun indexedEntries(): List<IndexedLocalManga> {
+        val root = fileSystem.getBaseDirectory()?.uri?.toString() ?: return emptyList()
+        val snapshot = collectionIndex.load(id, root)
+        if (!snapshot.ready) collectionMetadata.ensureLoaded() else requestIndexVerification()
+        return collectionIndex.load(id, root).entries
+    }
+
+    private fun IndexedLocalManga.toSourceManga(): SManga = SManga.create().also {
+        it.url = url
+        it.title = title
+        it.author = author
+        it.artist = artist
+        it.description = description
+        it.genre = genre
+        it.status = status.toInt()
+        it.thumbnail_url = thumbnail
+    }
+
+    private fun fingerprint(directory: UniFile): String {
+        val files = checkNotNull(directory.listFiles()) { "Cannot inspect manga folder" }
+        val stamps = files.map { LocalMetadataStamp(it.name.orEmpty(), it.lastModified(), it.length()) }.toMutableList()
+        // A chapter directory's timestamp need not change when its ComicInfo contents change.
+        files.filter { it.isDirectory }.forEach { child ->
+            child.findFile(COMIC_INFO_FILE)?.let { metadata ->
+                stamps += LocalMetadataStamp("${child.name}/$COMIC_INFO_FILE", metadata.lastModified(), metadata.length())
+            }
+        }
+        return localMetadataFingerprint(stamps)
+    }
+
+    private fun indexEntry(root: String, directory: UniFile, manga: SManga, signature: String): IndexedLocalManga {
+        val cover = directory.listFiles().orEmpty().firstOrNull {
+            it.isFile && it.name.orEmpty().lowercase(java.util.Locale.ROOT) in setOf("cover.jpg", "cover.jpeg", "cover.png", "cover.webp", "cover.avif", "cover.gif", "cover.bmp", "cover.heic", "cover.heif", "cover.jxl", "cover.cbi")
+        }?.uri?.toString()
+        return IndexedLocalManga(
+            id, root, manga.url, manga.title, manga.author, manga.artist, manga.description,
+            manga.genre, manga.status.toLong(), cover, directory.lastModified(), signature,
+        )
+    }
+
+    private suspend fun updateIndexedManga(manga: SManga) {
+        val root = fileSystem.getBaseDirectory()?.uri?.toString() ?: error("Collection unavailable")
+        val directory = fileSystem.getMangaDirectory(manga.url) ?: error("Manga folder unavailable")
+        val entry = indexEntry(root, directory, manga, fingerprint(directory))
+        check(fileSystem.getBaseDirectory()?.uri?.toString() == root) { "Collection changed" }
+        collectionIndex.put(entry)
     }
 
     private suspend fun scanCollectionMetadata(): List<String> = withIOContext {
+        val directory = fileSystem.getBaseDirectory() ?: error("Collection unavailable")
+        check(directory.exists() && directory.isDirectory && directory.canRead()) { "Collection unavailable" }
+        val root = directory.uri.toString()
+        val old = collectionIndex.load(id, root).entries.associateBy { it.url }
+        val children = checkNotNull(directory.listFiles()) { "Could not list collection" }
+        check(children.none { it.name.orEmpty().startsWith(".collection-edit-pending-") }) { "Collection file edit requires recovery" }
+        val folders = children.filter { it.isDirectory && !it.name.orEmpty().startsWith(".collection-edit-") }.distinctBy { it.name }
+        val changed = mutableListOf<IndexedLocalManga>()
         importCollectionTagCatalog()
-        val authors = mutableListOf<String>()
-        val allowHidden = allowHiddenFiles()
-        fileSystem.getFilesInBaseDirectory()
-            .filter { it.isDirectory && (allowHidden || !it.name.orEmpty().startsWith('.')) }
-            .distinctBy { it.name }
-            .forEach { directory ->
-                currentCoroutineContext().ensureActive()
+        for (folder in folders) {
+            currentCoroutineContext().ensureActive()
+            val url = folder.name ?: continue
+            if (!allowHiddenFiles() && url.startsWith('.')) continue
+            try {
+                val signature = fingerprint(folder)
+                val previous = old[url]
+                if (signature.isNotEmpty() && previous?.fingerprint == signature) continue
+                // Retry chapter metadata discovery when archive contents may have changed.
+                folder.findFile(".noxml")?.let { check(it.delete()) { "Cannot refresh metadata marker" } }
                 val manga = SManga.create().apply {
-                    title = directory.name.orEmpty()
-                    url = directory.name.orEmpty()
+                    this.url = url
+                    title = url
                 }
-                var metadataFailed = false
-                getMangaDetails(manga) { metadataFailed = true }
-                manga.author?.let(authors::add)
-                localTags.syncLocalManga(
-                    sourceId = id,
-                    url = manga.url,
-                    title = manga.title,
-                    tags = if (metadataFailed) null else collectionTagNames(listOfNotNull(manga.genre)),
-                )
+                var failed = false
+                getMangaDetails(manga, findCover = false) { failed = true }
+                check(fileSystem.getBaseDirectory()?.uri?.toString() == root) { "Collection changed" }
+                if (!failed) {
+                    changed += indexEntry(root, folder, manga, fingerprint(folder))
+                    localTags.syncLocalManga(manga.url, manga.title, collectionTagNames(listOfNotNull(manga.genre)), id)
+                } else if (previous == null) {
+                    changed += indexEntry(root, folder, manga, "")
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // An unreadable title cannot erase its previously indexed metadata or links.
+                if (old[url] == null) {
+                    changed += IndexedLocalManga(id, root, url, url, null, null, null, null, 0, null, 0, "")
+                }
+                logcat(LogPriority.ERROR, e) { "Could not update indexed local title: $url" }
             }
-        collectionTagNames(authors)
+        }
+        check(fileSystem.getBaseDirectory()?.uri?.toString() == root && directory.canRead()) { "Collection changed or unavailable" }
+        val updated = collectionIndex.finishScan(id, root, changed, folders.mapNotNull { it.name }.toSet())
+        if (updated) CollectionTagChanges.markDirty(id)
+        collectionTagNames(collectionIndex.load(id, root).entries.filter { allowHiddenFiles() || !it.url.startsWith('.') }.mapNotNull { it.author })
     }
 
     /** The app owns database writes; the PC only publishes this shared-storage catalog. */
@@ -591,16 +667,20 @@ open class LocalSource(
     }
 
     suspend fun getCollectionTags(): List<String> = withIOContext {
-        collectionMetadata.ensureLoaded()
-        collectionMetadata.tags.value
+        requestIndexVerification()
+        localTags.getAll(id).map { it.name }
     }
 
     suspend fun getCollectionAuthors(): List<String> = withIOContext {
-        collectionMetadata.ensureLoaded()
-        collectionMetadata.authors.value
+        collectionTagNames(indexedEntries().filter { allowHiddenFiles() || !it.url.startsWith('.') }.mapNotNull { it.author })
     }
 
-    fun observeCollectionAuthors(): Flow<List<String>> = collectionMetadata.authors
+    fun observeCollectionAuthors(): Flow<List<String>> = flow {
+        val root = fileSystem.getBaseDirectory()?.uri?.toString() ?: return@flow
+        collectionIndex.load(id, root)
+        requestIndexVerification()
+        emitAll(collectionIndex.observe(id, root).map { snapshot -> collectionTagNames(snapshot?.entries.orEmpty().filter { allowHiddenFiles() || !it.url.startsWith('.') }.mapNotNull { it.author }) })
+    }
 
     /** Replay in-memory tags immediately; database changes remain observed between dialogs. */
     fun observeCollectionTags(): Flow<List<String>> {
@@ -609,8 +689,21 @@ open class LocalSource(
     }
 
     suspend fun updateCollectionMangaTags(mangaId: Long, tags: List<String>) = withIOContext {
-        collectionMetadata.invalidate {
+        collectionMetadata.invalidate(rescan = false) {
             localTags.replaceMangaTags(mangaId, collectionTagNames(tags))
+            getManga.await(mangaId)?.let { stored ->
+                val manga = SManga.create().apply {
+                    url = stored.url
+                    title = stored.ogTitle
+                    author = stored.ogAuthor
+                    artist = stored.ogArtist
+                    description = stored.ogDescription
+                    genre = tags.joinToString(", ")
+                    status = stored.ogStatus.toInt()
+                }
+                updateIndexedManga(manga)
+            }
+            CollectionTagChanges.markDirty(id)
         }
     }
 
@@ -641,6 +734,17 @@ open class LocalSource(
 
     // Unused stuff
     override suspend fun getPageList(chapter: SChapter): List<Page> = throw UnsupportedOperationException("Unused")
+
+    suspend fun <T> withExclusiveCollectionAccess(block: suspend () -> T): T =
+        CollectionIndexLocks.forSource(id).withLock { block() }
+
+    fun refreshAfterFileEdit() {
+        lastVerification.set(0L)
+        CollectionTagChanges.markDirty(id)
+        requestIndexVerification(force = true)
+    }
+
+    fun getCollectionDirectory() = fileSystem.getBaseDirectory()
 
     fun getFormat(chapter: SChapter): Format {
         try {

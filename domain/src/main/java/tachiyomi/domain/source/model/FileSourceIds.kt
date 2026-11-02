@@ -11,5 +11,5 @@ object FileSourceIds {
         return CUSTOM_SOURCE_PREFIX + hash
     }
 
-    fun contains(id: Long): Boolean = id == LOCAL || id == PRIVATE_COLLECTION || id >= CUSTOM_SOURCE_PREFIX
+    fun contains(id: Long): Boolean = id == LOCAL || id == PRIVATE_COLLECTION || id in CUSTOM_SOURCE_PREFIX..(CUSTOM_SOURCE_PREFIX + 0x7FFFFFFFL)
 }

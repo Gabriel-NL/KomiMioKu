@@ -1,0 +1,6 @@
+CREATE TABLE local_tag_collections (
+    source_id INTEGER NOT NULL PRIMARY KEY
+);
+
+INSERT OR IGNORE INTO local_tag_collections(source_id)
+SELECT source_id FROM local_source_tags;

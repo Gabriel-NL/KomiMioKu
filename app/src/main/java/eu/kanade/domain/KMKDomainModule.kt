@@ -3,6 +3,7 @@ package eu.kanade.domain
 import tachiyomi.data.libraryUpdateError.LibraryUpdateErrorRepositoryImpl
 import tachiyomi.data.libraryUpdateError.LibraryUpdateErrorWithRelationsRepositoryImpl
 import tachiyomi.data.libraryUpdateErrorMessage.LibraryUpdateErrorMessageRepositoryImpl
+import tachiyomi.data.localtag.LocalCollectionIndexRepositoryImpl
 import tachiyomi.data.localtag.LocalTagRepositoryImpl
 import tachiyomi.domain.libraryUpdateError.interactor.DeleteLibraryUpdateErrors
 import tachiyomi.domain.libraryUpdateError.interactor.GetLibraryUpdateErrorWithRelations
@@ -14,6 +15,7 @@ import tachiyomi.domain.libraryUpdateErrorMessage.interactor.DeleteLibraryUpdate
 import tachiyomi.domain.libraryUpdateErrorMessage.interactor.GetLibraryUpdateErrorMessages
 import tachiyomi.domain.libraryUpdateErrorMessage.interactor.InsertLibraryUpdateErrorMessages
 import tachiyomi.domain.libraryUpdateErrorMessage.repository.LibraryUpdateErrorMessageRepository
+import tachiyomi.domain.localtag.repository.LocalCollectionIndexRepository
 import tachiyomi.domain.localtag.repository.LocalTagRepository
 import uy.kohesive.injekt.api.InjektModule
 import uy.kohesive.injekt.api.InjektRegistrar
@@ -24,6 +26,7 @@ import uy.kohesive.injekt.api.get
 class KMKDomainModule : InjektModule {
 
     override fun InjektRegistrar.registerInjectables() {
+        addSingletonFactory<LocalCollectionIndexRepository> { LocalCollectionIndexRepositoryImpl(get()) }
         addSingletonFactory<LocalTagRepository> { LocalTagRepositoryImpl(get()) }
         addSingletonFactory<LibraryUpdateErrorWithRelationsRepository> {
             LibraryUpdateErrorWithRelationsRepositoryImpl(get())

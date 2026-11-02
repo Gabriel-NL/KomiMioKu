@@ -12,6 +12,11 @@ import tachiyomi.domain.source.model.FileSourceIds
 class LocalTagRepositoryImpl(
     private val handler: DatabaseHandler,
 ) : LocalTagRepository {
+    override suspend fun ensureCollection(sourceId: Long) {
+        require(FileSourceIds.contains(sourceId))
+        handler.await { localTagCollectionsQueries.ensureCollection(sourceId) }
+    }
+
     override suspend fun getAll(sourceId: Long): List<LocalTag> = handler.awaitList {
         localSourceTagsQueries.getSourceTags(sourceId, ::LocalTag)
     }
@@ -27,6 +32,7 @@ class LocalTagRepositoryImpl(
             .distinctBy(::localTagKey)
         if (tags.isEmpty()) return
         handler.await(inTransaction = true) {
+            localTagCollectionsQueries.ensureCollection(sourceId)
             normalizeStoredTags()
             tags.forEach { name ->
                 val key = localTagKey(name)
@@ -41,6 +47,7 @@ class LocalTagRepositoryImpl(
         handler.await(inTransaction = true) {
             localMangaTagsQueries.ensureLocalManga(sourceId, url, title)
             val mangaId = localMangaTagsQueries.getLocalMangaId(sourceId, url).executeAsOne()
+            localTagCollectionsQueries.ensureCollection(sourceId)
             if (tags != null) replaceLinks(mangaId, tags)
         }
     }

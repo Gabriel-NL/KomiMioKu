@@ -123,7 +123,6 @@ object SettingsDataScreen : SearchableSettings {
     override fun getPreferences(): List<Preference> {
         val backupPreferences = Injekt.get<BackupPreferences>()
         val storagePreferences = Injekt.get<StoragePreferences>()
-        val collectionNavigator = LocalNavigator.currentOrThrow
 
         val syncPreferences = remember { Injekt.get<SyncPreferences>() }
         val syncService by syncPreferences.syncService().collectAsState()
@@ -132,11 +131,9 @@ object SettingsDataScreen : SearchableSettings {
             getStorageLocationPref(storagePreferences = storagePreferences),
             Preference.PreferenceItem.InfoPreference(stringResource(MR.strings.pref_storage_location_info)),
 
-            Preference.PreferenceItem.TextPreference(
-                title = stringResource(KMR.strings.private_collection_name),
-                subtitle = stringResource(KMR.strings.private_collection_folder_summary),
-                onClick = { collectionNavigator.push(SettingsPrivateCollectionScreen) },
-            ),
+            collectionTagManagementPreference(),
+
+            collectionReconciliationPreference(),
 
             getBackupAndRestoreGroup(backupPreferences = backupPreferences),
             getDataGroup(),
@@ -264,6 +261,7 @@ object SettingsDataScreen : SearchableSettings {
         return Preference.PreferenceGroup(
             title = stringResource(MR.strings.label_backup),
             preferenceItems = persistentListOf(
+                Preference.PreferenceItem.TextPreference(title = stringResource(KMR.strings.collection_backup_user_data)),
                 // Manual actions
                 Preference.PreferenceItem.CustomPreference(
                     title = stringResource(restorePreferenceKeyString),
@@ -337,7 +335,7 @@ object SettingsDataScreen : SearchableSettings {
                     title = stringResource(KMR.strings.pref_show_restoring_progress_banner),
                 ),
                 // KMK <--
-            ),
+            ).addingAll(collectionBackupPreferences()),
         )
     }
 

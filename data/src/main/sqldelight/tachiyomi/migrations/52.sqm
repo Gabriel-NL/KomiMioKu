@@ -1,0 +1,22 @@
+CREATE TABLE local_collection_index (
+    source_id INTEGER NOT NULL,
+    root_uri TEXT NOT NULL,
+    url TEXT NOT NULL,
+    title TEXT NOT NULL,
+    author TEXT,
+    artist TEXT,
+    description TEXT,
+    genre TEXT,
+    status INTEGER NOT NULL,
+    thumbnail TEXT,
+    modified INTEGER NOT NULL,
+    fingerprint TEXT NOT NULL,
+    PRIMARY KEY (source_id, root_uri, url)
+);
+
+CREATE TABLE local_collection_index_roots (
+    source_id INTEGER NOT NULL,
+    root_uri TEXT NOT NULL,
+    PRIMARY KEY (source_id, root_uri)
+);
+

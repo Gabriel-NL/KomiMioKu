@@ -138,4 +138,49 @@ class CollectionMetadataCacheTest {
             scope.cancel()
         }
     }
+
+    @Test
+    fun `indexed edit updates the key without rescanning the collection`() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        try {
+            var scans = 0
+            var key = "before"
+            val cache = CollectionMetadataCache(scope, MutableStateFlow(emptyList()), { key }, {
+                scans++
+                emptyList()
+            }, { throw it })
+            cache.ensureLoaded()
+            cache.invalidate(rescan = false) { key = "after" }
+            cache.ensureLoaded()
+            assertEquals(1, scans)
+            cache.ensureLoaded(force = true)
+            assertEquals(2, scans)
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun `recreated source instances share scan and edit serialization`() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        try {
+            val mutex = kotlinx.coroutines.sync.Mutex()
+            val release = CompletableDeferred<Unit>()
+            val order = mutableListOf<String>()
+            val first = CollectionMetadataCache(scope, MutableStateFlow(emptyList()), { "root" }, {
+                release.await()
+                order += "scan"
+                emptyList()
+            }, { throw it }, mutex)
+            val second = CollectionMetadataCache(scope, MutableStateFlow(emptyList()), { "root" }, { emptyList() }, { throw it }, mutex)
+            first.preload()
+            val edit = launch(Dispatchers.Unconfined) { second.invalidate(rescan = false) { order += "edit" } }
+            assertEquals(emptyList<String>(), order)
+            release.complete(Unit)
+            edit.join()
+            assertEquals(listOf("scan", "edit"), order)
+        } finally {
+            scope.cancel()
+        }
+    }
 }

@@ -70,6 +70,7 @@ import eu.kanade.tachiyomi.ui.browse.extension.ExtensionsScreen
 import eu.kanade.tachiyomi.ui.browse.extension.details.SourcePreferencesScreen
 import eu.kanade.tachiyomi.ui.browse.source.SourcesScreen
 import eu.kanade.tachiyomi.ui.browse.source.browse.BrowseSourceScreen
+import eu.kanade.tachiyomi.ui.browse.source.browse.CollectionFileEditDialog
 import eu.kanade.tachiyomi.ui.browse.source.feed.SourceFeedScreen
 import eu.kanade.tachiyomi.ui.browse.source.globalsearch.GlobalSearchScreen
 import eu.kanade.tachiyomi.ui.category.CategoryScreen
@@ -117,6 +118,7 @@ import tachiyomi.i18n.MR
 import tachiyomi.i18n.kmk.KMR
 import tachiyomi.i18n.sy.SYMR
 import tachiyomi.presentation.core.screens.LoadingScreen
+import tachiyomi.source.local.LocalSource
 import tachiyomi.source.local.isLocal
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
@@ -230,6 +232,21 @@ class MangaScreen(
         scope: CoroutineScope,
     ) {
         // KMK <--
+        var showFileRename by remember { mutableStateOf(false) }
+        if (showFileRename) {
+            (successState.source as? LocalSource)?.let { source ->
+                CollectionFileEditDialog(
+                    source,
+                    listOf(successState.manga),
+                    false,
+                    onDismiss = { showFileRename = false },
+                    onDone = {
+                        showFileRename = false
+                        navigator.replace(MangaScreen(successState.manga.id, fromSource))
+                    },
+                )
+            }
+        }
         val haptic = LocalHapticFeedback.current
         val isHttpSource = remember { successState.source is HttpSource }
 
@@ -378,6 +395,7 @@ class MangaScreen(
                     // KMK <--
                 )
             },
+            onRenameLocal = if (successState.source is LocalSource) ({ showFileRename = true }) else null,
             onEditInfoClicked = screenModel::showEditMangaInfoDialog,
             onRecommendClicked = {
                 openRecommends(navigator, screenModel.source?.getMainSource(), successState.manga)

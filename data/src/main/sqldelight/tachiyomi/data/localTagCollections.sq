@@ -1,0 +1,28 @@
+CREATE TABLE local_tag_collections (
+    source_id INTEGER NOT NULL PRIMARY KEY
+);
+
+ensureCollection:
+INSERT OR IGNORE INTO local_tag_collections(source_id) VALUES (:source_id);
+
+exportMangas:
+SELECT _id, source, url, title FROM mangas WHERE source = :source_id ORDER BY _id;
+
+exportLinks:
+SELECT mangas._id AS manga_id, mangas.url, mangas.title, local_tags.id AS tag_id, local_tags.name AS tag_name
+FROM mangas JOIN local_manga_tags ON local_manga_tags.manga_id = mangas._id
+JOIN local_tags ON local_tags.id = local_manga_tags.tag_id
+WHERE mangas.source = :source_id ORDER BY mangas._id, local_tags.id;
+
+copyLegacyCatalog:
+INSERT OR IGNORE INTO local_source_tags(source_id, tag_id)
+SELECT :target_source, tag_id FROM local_source_tags WHERE source_id IN (0, 1000000000001)
+UNION SELECT :target_source, tag_id FROM local_manga_tags JOIN mangas ON mangas._id = local_manga_tags.manga_id
+WHERE mangas.source IN (0, 1000000000001);
+
+clearLegacyLinks:
+DELETE FROM local_manga_tags WHERE manga_id IN (SELECT _id FROM mangas WHERE source IN (0, 1000000000001));
+
+clearLegacyCatalog:
+DELETE FROM local_source_tags WHERE source_id IN (0, 1000000000001);
+

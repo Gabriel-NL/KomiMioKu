@@ -20,13 +20,13 @@ LIMIT 1;
 clearMangaTags:
 DELETE FROM local_manga_tags
 WHERE manga_id = :manga_id
-AND EXISTS (SELECT 1 FROM mangas WHERE _id = :manga_id AND source IN (0, 1000000000001));
+AND EXISTS (SELECT 1 FROM mangas WHERE _id = :manga_id AND (source IN (0, 1000000000001) OR source BETWEEN 2000000000000 AND 2002147483647));
 
 insertMangaTag:
 INSERT OR IGNORE INTO local_manga_tags(manga_id, tag_id)
 SELECT :manga_id, id FROM local_tags
 WHERE normalized_name = :normalized_name
-AND EXISTS (SELECT 1 FROM mangas WHERE _id = :manga_id AND source IN (0, 1000000000001));
+AND EXISTS (SELECT 1 FROM mangas WHERE _id = :manga_id AND (source IN (0, 1000000000001) OR source BETWEEN 2000000000000 AND 2002147483647));
 
 getTagsForManga:
 SELECT local_tags.id, local_tags.name, local_tags.normalized_name
@@ -43,4 +43,4 @@ clearTagLinks:
 DELETE FROM local_manga_tags WHERE tag_id = :tag_id;
 
 getFileMangaSource:
-SELECT source FROM mangas WHERE _id = :manga_id AND source IN (0, 1000000000001);
+SELECT source FROM mangas WHERE _id = :manga_id AND (source IN (0, 1000000000001) OR source BETWEEN 2000000000000 AND 2002147483647);

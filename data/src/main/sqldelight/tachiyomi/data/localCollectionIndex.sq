@@ -1,0 +1,46 @@
+CREATE TABLE local_collection_index (
+    source_id INTEGER NOT NULL,
+    root_uri TEXT NOT NULL,
+    url TEXT NOT NULL,
+    title TEXT NOT NULL,
+    author TEXT,
+    artist TEXT,
+    description TEXT,
+    genre TEXT,
+    status INTEGER NOT NULL,
+    thumbnail TEXT,
+    modified INTEGER NOT NULL,
+    fingerprint TEXT NOT NULL,
+    PRIMARY KEY (source_id, root_uri, url)
+);
+
+CREATE TABLE local_collection_index_roots (
+    source_id INTEGER NOT NULL,
+    root_uri TEXT NOT NULL,
+    PRIMARY KEY (source_id, root_uri)
+);
+
+getEntries:
+SELECT * FROM local_collection_index WHERE source_id = :source_id AND root_uri = :root_uri ORDER BY url;
+
+isReady:
+SELECT count(*) FROM local_collection_index_roots WHERE source_id = :source_id AND root_uri = :root_uri;
+
+putEntry:
+INSERT OR REPLACE INTO local_collection_index VALUES (:source_id, :root_uri, :url, :title, :author, :artist, :description, :genre, :status, :thumbnail, :modified, :fingerprint);
+
+markReady:
+INSERT OR IGNORE INTO local_collection_index_roots VALUES (:source_id, :root_uri);
+
+removeEntry:
+DELETE FROM local_collection_index WHERE source_id = :source_id AND root_uri = :root_uri AND url = :url;
+
+readingStates:
+SELECT mangas.url,
+CASE WHEN count(chapters._id) > 0 AND sum(CASE WHEN chapters.read = 1 THEN 1 ELSE 0 END) = count(chapters._id) THEN 'finished'
+WHEN sum(CASE WHEN chapters.read = 1 OR chapters.last_page_read > 0 THEN 1 ELSE 0 END) > 0 THEN 'started'
+ELSE 'unread' END AS reading_state
+FROM mangas LEFT JOIN chapters ON chapters.manga_id = mangas._id
+WHERE mangas.source = :source_id
+AND mangas._id = (SELECT min(m._id) FROM mangas m WHERE m.source = mangas.source AND m.url = mangas.url)
+GROUP BY mangas._id, mangas.url;

@@ -29,6 +29,14 @@ fun canonicalLocalTagName(name: String): String {
     val trimmed = name.trim()
     val language = trimmed.replace(Regex("^(?:idioma|language|lang)\\s*:\\s*", RegexOption.IGNORE_CASE), "")
     val label = languageNames[languageAliasKey(language)] ?: trimmed
-    val lower = (if (label.equals("netorase", ignoreCase = true)) "Nts" else label).lowercase(Locale.ROOT)
+    val lower = (
+        if (label.equals("ntr", ignoreCase = true)) {
+            "Netorare"
+        } else if (label.equals("netorase", ignoreCase = true)) {
+            "Nts"
+        } else {
+            label
+        }
+        ).lowercase(Locale.ROOT)
     return lower.replaceFirstChar { it.uppercase(Locale.ROOT) }
 }

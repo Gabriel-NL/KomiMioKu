@@ -29,7 +29,6 @@ import eu.kanade.presentation.browse.components.bulkSelectionButton
 import eu.kanade.presentation.components.AppBarActions
 import eu.kanade.presentation.components.BulkSelectionToolbar
 import eu.kanade.presentation.components.SearchToolbar
-import eu.kanade.presentation.more.settings.screen.SettingsPrivateCollectionScreen
 import eu.kanade.presentation.util.Screen
 import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.ui.browse.BulkFavoriteScreenModel
@@ -181,11 +180,7 @@ data class MigrateSourceSearchScreen(
                 },
                 onHelpClick = { uriHandler.openUri(Constants.URL_HELP) },
                 onLocalSourceHelpClick = {
-                    if (sourceId == LocalSource.PRIVATE_COLLECTION_ID) {
-                        navigator.push(SettingsPrivateCollectionScreen)
-                    } else {
-                        uriHandler.openUri(LocalSource.HELP_URL)
-                    }
+                    uriHandler.openUri(LocalSource.HELP_URL)
                 },
                 onMangaClick = { manga ->
                     // KMK -->

@@ -5,7 +5,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.SelectAll
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.FlipToBack
+import androidx.compose.material.icons.outlined.Label
+import androidx.compose.material.icons.outlined.MergeType
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -16,7 +19,6 @@ import kotlinx.collections.immutable.persistentListOf
 import tachiyomi.i18n.MR
 import tachiyomi.i18n.kmk.KMR
 import tachiyomi.presentation.core.i18n.stringResource
-import androidx.compose.material.icons.outlined.Label
 
 @Composable
 fun BulkSelectionToolbar(
@@ -27,6 +29,8 @@ fun BulkSelectionToolbar(
     onSelectAll: (() -> Unit)? = null,
     onReverseSelection: (() -> Unit)? = null,
     onTagsClick: (() -> Unit)? = null,
+    onMergeFilesClick: (() -> Unit)? = null,
+    onRenameFilesClick: (() -> Unit)? = null,
 ) {
     AppBar(
         titleContent = { Text(text = "$selectedCount") },
@@ -75,6 +79,12 @@ fun BulkSelectionToolbar(
                                 },
                             ),
                         )
+                        if (selectedCount >= 2 && onMergeFilesClick != null) {
+                            add(AppBar.Action(title = stringResource(KMR.strings.collection_edit_merge), icon = Icons.Outlined.MergeType, onClick = onMergeFilesClick))
+                        }
+                        if (selectedCount == 1 && onRenameFilesClick != null) {
+                            add(AppBar.Action(title = stringResource(KMR.strings.collection_edit_rename), icon = Icons.Outlined.Edit, onClick = onRenameFilesClick))
+                        }
                         if (selectedCount > 0 && onTagsClick != null) {
                             add(
                                 AppBar.Action(

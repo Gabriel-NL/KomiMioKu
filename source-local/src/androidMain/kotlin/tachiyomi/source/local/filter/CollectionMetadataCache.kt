@@ -20,8 +20,8 @@ internal class CollectionMetadataCache(
     private val collectionKey: () -> String,
     private val scanAuthors: suspend () -> List<String>,
     private val onError: (Throwable) -> Unit,
+    private val mutex: Mutex = Mutex(),
 ) {
-    private val mutex = Mutex()
     private var loadedKey: String? = null
     private val mutableAuthors = MutableStateFlow<List<String>>(emptyList())
 
@@ -36,10 +36,10 @@ internal class CollectionMetadataCache(
 
     val authors = mutableAuthors.asStateFlow()
 
-    fun preload() {
+    fun preload(force: Boolean = false) {
         scope.launch {
             try {
-                ensureLoaded()
+                ensureLoaded(force)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -49,21 +49,21 @@ internal class CollectionMetadataCache(
         }
     }
 
-    suspend fun ensureLoaded() {
+    suspend fun ensureLoaded(force: Boolean = false) {
         mutex.withLock {
             val key = collectionKey()
-            if (loadedKey == key) return
+            if (!force && loadedKey == key) return
             mutableAuthors.value = scanAuthors()
             loadedKey = key
         }
     }
 
     /** Serialize metadata edits with discovery so an older scan cannot overwrite them. */
-    suspend fun invalidate(update: suspend () -> Unit) {
+    suspend fun invalidate(rescan: Boolean = true, update: suspend () -> Unit) {
         mutex.withLock {
             update()
-            loadedKey = null
+            loadedKey = if (rescan) null else collectionKey()
         }
-        preload()
+        if (rescan) preload()
     }
 }

@@ -1,0 +1,13 @@
+getRecords:
+SELECT _id, source, url, title, version, last_modified_at FROM mangas
+WHERE source = 0 OR source = 1000000000001 OR source BETWEEN 2000000000000 AND 2002147483647
+ORDER BY _id;
+
+moveRecord:
+UPDATE mangas SET source = :target_source
+WHERE _id = :manga_id AND source = :old_source AND url = :url
+AND NOT EXISTS (SELECT 1 FROM mangas WHERE source = :target_source AND url = :url);
+
+copyCatalog:
+INSERT OR IGNORE INTO local_source_tags(source_id, tag_id)
+SELECT :target_source, tag_id FROM local_manga_tags WHERE manga_id = :manga_id;

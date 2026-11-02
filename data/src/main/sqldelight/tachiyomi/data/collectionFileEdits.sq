@@ -1,0 +1,36 @@
+getRows:
+SELECT * FROM mangas WHERE _id IN :ids ORDER BY _id;
+
+getChapters:
+SELECT * FROM chapters WHERE manga_id IN :ids ORDER BY _id;
+
+protectedReferences:
+SELECT (SELECT count(*) FROM manga_sync WHERE manga_id IN :ids)
+     + (SELECT count(*) FROM merged WHERE manga_id IN :ids OR merge_id IN :ids)
+     + (SELECT count(*) FROM search_metadata WHERE manga_id IN :ids);
+
+relocateManga:
+UPDATE mangas SET url = :url, title = :title, thumbnail_url = NULL, initialized = 1,
+ favorite = :favorite, notes = :notes, genre = :genre, cover_last_modified = :modified
+WHERE _id = :id AND source = :source;
+
+relocateChapter:
+UPDATE chapters SET manga_id = :manga, url = :url, name = :name,
+ chapter_number = :number, source_order = :source_order
+WHERE _id = :id;
+
+insertChapter:
+INSERT INTO chapters(manga_id,url,name,read,bookmark,last_page_read,chapter_number,source_order,date_fetch,date_upload)
+VALUES (:manga,:url,:name,0,0,0,:number,:source_order,:now,:uploaded);
+
+copyTags:
+INSERT OR IGNORE INTO local_manga_tags(manga_id,tag_id)
+SELECT :target,tag_id FROM local_manga_tags WHERE manga_id = :old;
+
+copyCategories:
+INSERT INTO mangas_categories(manga_id,category_id)
+SELECT :target,category_id FROM mangas_categories WHERE manga_id = :old
+AND category_id NOT IN (SELECT category_id FROM mangas_categories WHERE manga_id = :target);
+
+removeMergedManga:
+DELETE FROM mangas WHERE _id = :id AND source = :source;

@@ -4,6 +4,8 @@ import kotlinx.coroutines.flow.Flow
 import tachiyomi.domain.localtag.model.LocalTag
 
 interface LocalTagRepository {
+    suspend fun ensureCollection(sourceId: Long)
+
     suspend fun getAll(sourceId: Long = 0L): List<LocalTag>
 
     fun observeAll(sourceId: Long = 0L): Flow<List<LocalTag>>

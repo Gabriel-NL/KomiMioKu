@@ -239,15 +239,6 @@ class App : Application(), DefaultLifecycleObserver, SingletonImageLoader.Factor
         }
 
         initializeMigrator()
-
-        // Warm the local catalog off the main thread and retain it for this process.
-        // The filter dialog only subscribes to this shared catalog; it does not own it.
-        scope.launch(Dispatchers.IO) {
-            val sources = Injekt.get<SourceManager>().sources.first { sources ->
-                sources.any { it is LocalSource }
-            }
-            sources.filterIsInstance<LocalSource>().forEach { it.preloadCollectionMetadata() }
-        }
     }
 
     private fun initializeMigrator() {
@@ -316,6 +307,19 @@ class App : Application(), DefaultLifecycleObserver, SingletonImageLoader.Factor
 
     override fun onStart(owner: LifecycleOwner) {
         SecureActivityDelegate.onApplicationStart()
+
+        // Also verify external file edits when returning to an already-running process.
+        owner.lifecycleScope.launch(Dispatchers.IO) {
+            val sources = Injekt.get<SourceManager>().sources.first { sources -> sources.any { it is LocalSource } }
+            sources.filterIsInstance<LocalSource>().forEach { source ->
+                try {
+                    eu.kanade.tachiyomi.data.local.CollectionFileEditor.get(this@App).recover(source)
+                    source.preloadCollectionMetadata()
+                } catch (e: Exception) {
+                    logcat(LogPriority.ERROR, e) { "Collection file edit recovery is pending" }
+                }
+            }
+        }
 
         val syncPreferences: SyncPreferences = Injekt.get()
         val syncTriggerOpt = syncPreferences.getSyncTriggerOptions()

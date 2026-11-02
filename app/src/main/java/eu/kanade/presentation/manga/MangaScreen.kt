@@ -172,6 +172,7 @@ fun MangaScreen(
     // SY -->
     onMetadataViewerClicked: () -> Unit,
     onEditInfoClicked: () -> Unit,
+    onRenameLocal: (() -> Unit)? = null,
     onRecommendClicked: () -> Unit,
     onMergedSettingsClicked: () -> Unit,
     onMergeClicked: () -> Unit,
@@ -249,6 +250,7 @@ fun MangaScreen(
             // SY -->
             onMetadataViewerClicked = onMetadataViewerClicked,
             onEditInfoClicked = onEditInfoClicked,
+            onRenameLocal = onRenameLocal,
             onRecommendClicked = onRecommendClicked,
             onMergedSettingsClicked = onMergedSettingsClicked,
             onMergeClicked = onMergeClicked,
@@ -312,6 +314,7 @@ fun MangaScreen(
             // SY -->
             onMetadataViewerClicked = onMetadataViewerClicked,
             onEditInfoClicked = onEditInfoClicked,
+            onRenameLocal = onRenameLocal,
             onRecommendClicked = onRecommendClicked,
             onMergedSettingsClicked = onMergedSettingsClicked,
             onMergeClicked = onMergeClicked,
@@ -385,6 +388,7 @@ private fun MangaScreenSmallImpl(
     // SY -->
     onMetadataViewerClicked: () -> Unit,
     onEditInfoClicked: () -> Unit,
+    onRenameLocal: (() -> Unit)? = null,
     onRecommendClicked: () -> Unit,
     onMergedSettingsClicked: () -> Unit,
     onMergeClicked: () -> Unit,
@@ -489,6 +493,7 @@ private fun MangaScreenSmallImpl(
                 onClickEditNotes = onEditNotesClicked,
                 onClickEditTags = onEditTagsClicked,
                 // SY -->
+                onRenameLocal = onRenameLocal,
                 onClickEditInfo = onEditInfoClicked.takeIf { state.manga.favorite || state.manga.isLocal() },
                 // KMK -->
                 onClickSourceSettings = onClickSourceSettingsClicked,
@@ -848,6 +853,7 @@ private fun MangaScreenLargeImpl(
     // SY -->
     onMetadataViewerClicked: () -> Unit,
     onEditInfoClicked: () -> Unit,
+    onRenameLocal: (() -> Unit)? = null,
     onRecommendClicked: () -> Unit,
     onMergedSettingsClicked: () -> Unit,
     onMergeClicked: () -> Unit,
@@ -944,6 +950,7 @@ private fun MangaScreenLargeImpl(
                 onClickEditTags = onEditTagsClicked,
                 onCancelActionMode = { onAllChapterSelected(false) },
                 // SY -->
+                onRenameLocal = onRenameLocal,
                 onClickEditInfo = onEditInfoClicked.takeIf { state.manga.favorite || state.manga.isLocal() },
                 // KMK -->
                 onClickSourceSettings = onClickSourceSettingsClicked,

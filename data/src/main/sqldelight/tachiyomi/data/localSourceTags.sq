@@ -19,3 +19,5 @@ SELECT :source_id, id FROM local_tags WHERE normalized_name = :normalized_name;
 mergeSourceTags:
 INSERT OR IGNORE INTO local_source_tags(source_id, tag_id)
 SELECT source_id, :target_id FROM local_source_tags WHERE tag_id = :old_id;
+
+

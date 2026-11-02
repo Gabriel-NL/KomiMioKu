@@ -12,7 +12,7 @@ const val COLLECTION_TAG_CATALOG = ".tags.json"
 const val MAX_TAG_CATALOG_BYTES = 1024 * 1024
 
 /** Portable additions to the tag database; never replaces tags or manga links. */
-internal fun decodeCollectionTagCatalog(text: String): List<String> {
+fun decodeCollectionTagCatalog(text: String): List<String> {
     require(text.toByteArray(Charsets.UTF_8).size <= MAX_TAG_CATALOG_BYTES) { "Tag catalog is too large" }
     val catalog = Json.parseToJsonElement(text.removePrefix("\uFEFF")) as? JsonObject
     require(catalog != null && catalog.keys == setOf("version", "tags")) { "Invalid tag catalog" }

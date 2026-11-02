@@ -69,6 +69,8 @@ import tachiyomi.domain.category.interactor.SetMangaCategories
 import tachiyomi.domain.category.model.Category
 import tachiyomi.domain.chapter.interactor.SetMangaDefaultChapterFlags
 import tachiyomi.domain.library.service.LibraryPreferences
+import tachiyomi.domain.localtag.model.CollectionTagChanges
+import tachiyomi.domain.localtag.model.CollectionTagRefreshCursor
 import tachiyomi.domain.manga.interactor.GetDuplicateLibraryManga
 import tachiyomi.domain.manga.interactor.GetFlatMetadataById
 import tachiyomi.domain.manga.interactor.GetManga
@@ -222,6 +224,10 @@ open class BrowseSourceScreenModel(
     /**
      * Flow of Pager flow tied to [State.listing]
      */
+    private val tagRefreshCursor = CollectionTagRefreshCursor(CollectionTagChanges.current(source.id))
+
+    fun consumeTagChanges(revision: Long): Boolean = source is LocalSource && tagRefreshCursor.consume(revision)
+
     private val hideInLibraryItems = sourcePreferences.hideInLibraryItems().get()
     private val collectionFolderChanges = if (source.isLocal()) {
         val storage = Injekt.get<StoragePreferences>()
