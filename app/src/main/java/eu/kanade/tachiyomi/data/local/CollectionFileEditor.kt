@@ -17,6 +17,7 @@ import kotlinx.serialization.json.Json
 import tachiyomi.data.DatabaseHandler
 import tachiyomi.domain.localtag.model.CollectionFileNames
 import tachiyomi.domain.localtag.model.canonicalLocalTagName
+import tachiyomi.domain.localtag.repository.LocalMetadataRepository
 import tachiyomi.domain.localtag.repository.LocalTagRepository
 import tachiyomi.domain.manga.interactor.GetManga
 import tachiyomi.domain.manga.model.Manga
@@ -35,11 +36,12 @@ class CollectionFileEditor private constructor(private val context: Context) {
     private val handler: DatabaseHandler = Injekt.get()
     private val getManga: GetManga = Injekt.get()
     private val tags: LocalTagRepository = Injekt.get()
+    private val metadata: LocalMetadataRepository = Injekt.get()
     private val custom: CustomMangaRepository = Injekt.get()
     private val json = Json { encodeDefaults = true }
     private val mutex = Mutex()
     private val files = CollectionEditFiles(context)
-    private val work get() = File(context.filesDir, "collection-file-edits").also { it.mkdirs() }
+    private val work get() = File(context.filesDir, "collection-file-edits")
 
     data class ChapterChoice(val mangaId: Long, val url: String, val file: String, val title: String, val number: Float, val directory: Boolean)
     data class Preview(val mangas: List<Manga>, val chapters: List<ChapterChoice>, val root: String)
@@ -93,25 +95,25 @@ class CollectionFileEditor private constructor(private val context: Context) {
     }
 
     private fun journalFile(id: String) = AtomicFile(File(work, "$id.json"))
-    private fun writeJournal(journal: Journal) {
-        val file = journalFile(journal.operation)
-        val output = file.startWrite()
-        try {
-            output.write(json.encodeToString(journal).toByteArray(Charsets.UTF_8))
-            file.finishWrite(output)
-        } catch (e: Throwable) {
-            file.failWrite(output)
-            throw e
-        }
+    private suspend fun writeJournal(journal: Journal, before: String? = null) {
+        handler.await { localMetadataQueries.putOperation(journal.operation, journal.source, json.encodeToString(journal), before) }
     }
 
     private suspend fun committed(id: String) = handler.await { collectionBackupCommitsQueries.isCommitted(id).executeAsOne() > 0 }
     private fun pending(journal: Journal) = ".collection-edit-pending-${journal.operation}.json"
 
     private suspend fun recoverLocked(source: LocalSource) {
-        val journals = work.listFiles().orEmpty().filter { (it.extension == "json" || it.name.endsWith(".json.bak")) && !it.name.contains("-before.json") }.map { it.name.removeSuffix(".bak").removeSuffix(".json") }.distinct()
-        for (id in journals) {
-            val journal = json.decodeFromString<Journal>(journalFile(id).readFully().toString(Charsets.UTF_8))
+        // Adopt old interrupted-operation journals before finishing them; new operations write SQLite only.
+        work.listFiles().orEmpty().filter { (it.extension == "json" || it.name.endsWith(".json.bak")) && !it.name.contains("-before.json") }
+            .map { it.name.removeSuffix(".bak").removeSuffix(".json") }.distinct().forEach { id ->
+                val body = journalFile(id).readFully().toString(Charsets.UTF_8)
+                val old = json.decodeFromString<Journal>(body)
+                if (old.source == source.id) writeJournal(old, File(work, "$id-before.json").takeIf { it.isFile }?.readText())
+            }
+        val journals = handler.await { localMetadataQueries.getOperations(source.id).executeAsList() }
+        for (record in journals) {
+            val id = record.operation
+            val journal = json.decodeFromString<Journal>(record.payload)
             if (journal.source != source.id) continue
             val root = root(source)
             check(root.uri.toString() == journal.root) { "Restore the original collection location to finish recovery." }
@@ -135,7 +137,9 @@ class CollectionFileEditor private constructor(private val context: Context) {
                 files.removeOwned(root.findFile(journal.stage), id)
             }
             root.findFile(pending(journal))?.let { check(it.delete()) }
+            handler.await { localMetadataQueries.deleteOperation(id) }
             journalFile(id).delete()
+            File(work, "$id-before.json").takeIf { it.isFile }?.let { check(it.delete()) }
             source.refreshAfterFileEdit()
         }
     }
@@ -191,32 +195,20 @@ class CollectionFileEditor private constructor(private val context: Context) {
         )
         val allTags = preview.mangas.flatMap { manga -> tags.getTagsForManga(manga.id).map { it.name } + manga.genre.orEmpty() }.map(::canonicalLocalTagName).distinct()
         // Preserve complete native record snapshots alongside the durable operation journal.
-        File(work, "$operation-before.json").writeText(json.encodeToString(MangaBackupCreator()(preview.mangas, BackupOptions())))
-        writeJournal(journal)
+        writeJournal(journal, json.encodeToString(MangaBackupCreator()(preview.mangas, BackupOptions())))
         try {
             check(root.findFile(pending(journal)) == null)
             files.writeText(checkNotNull(root.createFile(pending(journal))), operation)
             val stage = checkNotNull(root.createDirectory(stageName)) { "Cannot stage collection files" }
             files.writeText(checkNotNull(stage.createFile(".collection-edit-owner.txt")), operation)
             val primaryChapterFiles = preview.chapters.filter { it.mangaId == primary.id }.map { it.file }.toSet()
-            checkNotNull(originals.first().listFiles()).filter { it.name !in primaryChapterFiles && it.name !in setOf(LOCAL_CHAPTER_TITLES, ".collection-edit-owner.txt", ".noxml") }.forEach {
+            checkNotNull(originals.first().listFiles()).filter { it.name !in primaryChapterFiles && it.name !in setOf(LOCAL_CHAPTER_TITLES, ".collection-edit-owner.txt", ".noxml", "ComicInfo.xml", LocalSource.COMIC_INFO_ARCHIVE, "details.json") }.forEach {
                 files.copy(it, stage, checkNotNull(it.name))
             }
             plans.forEach { plan ->
                 val original = originals[preview.mangas.indexOfFirst { it.id == plan.choice.mangaId }]
                 files.copy(checkNotNull(original.findFile(plan.choice.file)), stage, plan.file)
             }
-            val overrides = LocalChapterTitles(chapters = plans.mapIndexed { index, plan -> plan.file to LocalChapterTitle(plan.title, plan.number, index) }.toMap())
-            require(json.encodeToString(overrides).toByteArray().size <= 4 * 1024 * 1024) { "Chapter title catalog is too large" }
-            files.writeText(checkNotNull(stage.createFile(LOCAL_CHAPTER_TITLES)), json.encodeToString(overrides))
-            // Persist Series/tags in root ComicInfo, keeping opaque (including encrypted) chapter archives intact.
-            val metadata = primary.toSManga().apply {
-                url = stageName
-                this.title = title
-                genre = allTags.joinToString(", ")
-            }
-            source.updateMangaInfo(metadata)
-            check(stage.findFile("ComicInfo.xml") != null || stage.findFile(LocalSource.COMIC_INFO_ARCHIVE) != null) { "Cannot persist collection metadata" }
             journal = journal.copy(signature = files.tree(stage))
             writeJournal(journal)
             originals.forEachIndexed { index, original -> check(files.tree(original) == signatures[index]) { "Files changed during staging; no originals were replaced" } }
@@ -236,6 +228,8 @@ class CollectionFileEditor private constructor(private val context: Context) {
                         old.forEach { collectionFileEditsQueries.relocateChapter(primary.id, url, plan.title, plan.number.toDouble(), (plans.lastIndex - index).toLong(), it._id) }
                     }
                 }
+                if (preview.mangas.size > 1) localExportReviewQueries.revoke(primary.id)
+                metadata.relocateDocuments(source.id, preview.mangas.map { it.url }, title)
                 preview.mangas.drop(1).forEach { manga ->
                     collectionFileEditsQueries.copyTags(primary.id, manga.id)
                     collectionFileEditsQueries.copyCategories(primary.id, manga.id)

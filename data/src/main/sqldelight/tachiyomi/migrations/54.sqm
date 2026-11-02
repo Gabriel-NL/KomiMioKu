@@ -1,0 +1,19 @@
+CREATE TABLE local_metadata_state (
+    manga_id INTEGER NOT NULL PRIMARY KEY REFERENCES mangas(_id) ON DELETE CASCADE
+);
+
+CREATE TABLE local_metadata_documents (
+    source_id INTEGER NOT NULL,
+    manga_url TEXT NOT NULL,
+    path TEXT NOT NULL,
+    format TEXT NOT NULL,
+    content TEXT NOT NULL,
+    PRIMARY KEY (source_id, manga_url, path)
+);
+
+CREATE TABLE local_file_operations (
+    operation TEXT NOT NULL PRIMARY KEY,
+    source_id INTEGER NOT NULL,
+    payload TEXT NOT NULL,
+    before_data TEXT
+);

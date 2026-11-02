@@ -1,0 +1,66 @@
+CREATE TABLE local_metadata_state (
+    manga_id INTEGER NOT NULL PRIMARY KEY REFERENCES mangas(_id) ON DELETE CASCADE
+);
+
+CREATE TABLE local_metadata_documents (
+    source_id INTEGER NOT NULL,
+    manga_url TEXT NOT NULL,
+    path TEXT NOT NULL,
+    format TEXT NOT NULL,
+    content TEXT NOT NULL,
+    PRIMARY KEY (source_id, manga_url, path)
+);
+
+CREATE TABLE local_file_operations (
+    operation TEXT NOT NULL PRIMARY KEY,
+    source_id INTEGER NOT NULL,
+    payload TEXT NOT NULL,
+    before_data TEXT
+);
+
+isImported:
+SELECT count(*) FROM local_metadata_state WHERE manga_id = :manga_id;
+
+markImported:
+INSERT OR IGNORE INTO local_metadata_state VALUES (:manga_id);
+
+resetImport:
+DELETE FROM local_metadata_state WHERE manga_id IN (SELECT _id FROM mangas WHERE source = :source);
+
+readManga:
+SELECT * FROM mangas WHERE source = :source AND url = :url ORDER BY _id LIMIT 1;
+
+readChapters:
+SELECT * FROM chapters WHERE manga_id = :manga_id ORDER BY source_order, _id;
+
+saveFields:
+UPDATE mangas SET title = :title, author = :author, artist = :artist,
+ description = :description, genre = :genre, status = :status, thumbnail_url = :thumbnail,
+ initialized = 1
+WHERE _id = :manga_id;
+
+putDocument:
+INSERT OR REPLACE INTO local_metadata_documents VALUES (:source, :url, :path, :format, :content);
+
+getDocuments:
+SELECT manga_url, path, format, content FROM local_metadata_documents WHERE source_id = :source ORDER BY manga_url, path;
+
+clearDocuments:
+DELETE FROM local_metadata_documents WHERE source_id = :source AND manga_url IN :urls;
+
+catalogMangas:
+SELECT * FROM mangas WHERE source = :source ORDER BY _id;
+
+insertChapter:
+INSERT INTO chapters(manga_id,url,name,scanlator,read,bookmark,last_page_read,chapter_number,source_order,date_fetch,date_upload)
+VALUES (:manga_id,:url,:name,:scanlator,0,0,0,:number,:source_order,:now,:uploaded);
+
+putOperation:
+INSERT INTO local_file_operations VALUES (:operation,:source,:payload,:before_data)
+ON CONFLICT(operation) DO UPDATE SET payload = excluded.payload;
+
+getOperations:
+SELECT operation, payload FROM local_file_operations WHERE source_id = :source;
+
+deleteOperation:
+DELETE FROM local_file_operations WHERE operation = :operation;

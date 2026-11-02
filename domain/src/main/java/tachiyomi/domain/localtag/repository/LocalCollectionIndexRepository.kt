@@ -5,6 +5,7 @@ import tachiyomi.domain.localtag.model.IndexedLocalManga
 import tachiyomi.domain.localtag.model.LocalCollectionSnapshot
 
 interface LocalCollectionIndexRepository {
+    suspend fun invalidate(source: Long)
     suspend fun load(source: Long, root: String): LocalCollectionSnapshot
     fun observe(source: Long, root: String): Flow<LocalCollectionSnapshot?>
     suspend fun put(entry: IndexedLocalManga)

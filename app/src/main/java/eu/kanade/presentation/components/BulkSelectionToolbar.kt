@@ -9,6 +9,7 @@ import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.FlipToBack
 import androidx.compose.material.icons.outlined.Label
 import androidx.compose.material.icons.outlined.MergeType
+import androidx.compose.material.icons.outlined.Verified
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -30,6 +31,7 @@ fun BulkSelectionToolbar(
     onReverseSelection: (() -> Unit)? = null,
     onTagsClick: (() -> Unit)? = null,
     onMergeFilesClick: (() -> Unit)? = null,
+    onExportReviewClick: (() -> Unit)? = null,
     onRenameFilesClick: (() -> Unit)? = null,
 ) {
     AppBar(
@@ -79,6 +81,9 @@ fun BulkSelectionToolbar(
                                 },
                             ),
                         )
+                        if (selectedCount > 0 && onExportReviewClick != null) {
+                            add(AppBar.Action(title = stringResource(KMR.strings.export_review_title), icon = Icons.Outlined.Verified, onClick = onExportReviewClick))
+                        }
                         if (selectedCount >= 2 && onMergeFilesClick != null) {
                             add(AppBar.Action(title = stringResource(KMR.strings.collection_edit_merge), icon = Icons.Outlined.MergeType, onClick = onMergeFilesClick))
                         }

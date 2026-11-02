@@ -1,0 +1,3 @@
+CREATE TABLE local_export_approvals (
+    manga_id INTEGER NOT NULL PRIMARY KEY REFERENCES mangas(_id) ON DELETE CASCADE
+);

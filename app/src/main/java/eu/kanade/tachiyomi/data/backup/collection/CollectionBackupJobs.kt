@@ -13,7 +13,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 
 /** One process-owned operation; leaving settings or rotating must not interrupt file replacement. */
-class CollectionBackupJobs private constructor(context: Context) {
+class CollectionBackupJobs private constructor(private val context: Context) {
     data class State(
         val busy: Boolean = false,
         val phase: String = "",
@@ -59,12 +59,30 @@ class CollectionBackupJobs private constructor(context: Context) {
         if (!mutable.value.busy) scope.launch { mutable.update { it.copy(recovery = service.hasRecovery()) } }
     }
 
-    fun create(source: Long, uri: Uri) {
+    fun create(source: Long, uri: Uri, approvedOnly: Boolean = false) {
         if (mutable.value.prepared != null) return
         run("create") {
             service.cleanUnusedPreparations()
-            service.create(source, uri, ::progress)
+            service.create(source, uri, ::progress, approvedOnly)
             mutable.update { it.copy(outcome = "created") }
+        }
+    }
+
+    fun verify(uri: Uri) {
+        if (mutable.value.prepared != null) return
+        run("verify") {
+            val manifest = service.verify(uri, ::progress)
+            mutable.update { it.copy(outcome = "verified", detail = "${manifest.collection}: ${manifest.data.mangas.size} manga, ${manifest.assets.size} files") }
+        }
+    }
+
+    fun importFiles(source: tachiyomi.source.local.LocalSource, uri: Uri, tree: Boolean, repair: Boolean, batch: Boolean = false) {
+        if (mutable.value.prepared != null) return
+        run("import") {
+            service.cleanUnusedPreparations()
+            val manager = eu.kanade.tachiyomi.data.local.MangaManagerService(context)
+            val plan = if (batch) manager.prepareBatch(source, uri, ::progress) else manager.prepareImport(source, uri, tree, repair, progress = ::progress)
+            mutable.update { it.copy(prepared = plan) }
         }
     }
 

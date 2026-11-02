@@ -296,6 +296,7 @@ private val settingScreens = listOf(
     // <-- AM (CONNECTIONS)
     SettingsBrowseScreen,
     SettingsDataScreen,
+    SettingsMangaManagerScreen,
     SettingsSecurityScreen,
     // SY -->
     SettingsEhScreen,

@@ -1,0 +1,6 @@
+CREATE TABLE local_manager_operations (
+ operation TEXT NOT NULL PRIMARY KEY,
+ source INTEGER NOT NULL,
+ root TEXT NOT NULL,
+ payload TEXT NOT NULL
+);

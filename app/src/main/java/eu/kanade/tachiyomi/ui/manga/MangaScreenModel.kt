@@ -699,8 +699,8 @@ class MangaScreenModel(
                 lastUpdate = manga.lastUpdate + 1,
             )
             val localSource = sourceManager.get(manga.source) as LocalSource
-            localSource.updateMangaInfo(manga.toSManga())
             screenModelScope.launchNonCancellable {
+                localSource.updateMangaInfo(manga.toSManga())
                 updateManga.await(
                     MangaUpdate(
                         manga.id,

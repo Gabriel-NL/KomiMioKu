@@ -26,6 +26,8 @@ import tachiyomi.domain.backup.service.CollectionArchivePolicy
 import tachiyomi.domain.backup.service.CollectionRecoveryAction
 import tachiyomi.domain.backup.service.collectionRecoveryAction
 import tachiyomi.domain.localtag.model.CollectionTagChanges
+import tachiyomi.domain.localtag.repository.ExportReviewRepository
+import tachiyomi.domain.localtag.repository.LocalMetadataRepository
 import tachiyomi.domain.localtag.repository.LocalTagRepository
 import tachiyomi.domain.manga.interactor.GetManga
 import tachiyomi.domain.manga.model.MangaUpdate
@@ -57,6 +59,8 @@ class CollectionBackupService(
     private val updateManga: UpdateManga = Injekt.get(),
     private val covers: CoverCache = Injekt.get(),
 ) {
+    private val reviews get() = Injekt.get<ExportReviewRepository>()
+    private val metadata get() = Injekt.get<LocalMetadataRepository>()
     private val json = Json { encodeDefaults = true }
     private val workRoot get() = File(context.filesDir, "collection-backup-work")
 
@@ -137,6 +141,8 @@ class CollectionBackupService(
             CategoriesBackupCreator()().filter { it.order in orders },
             tags.getAll(id).map { it.name },
             records.map { CollectionTagLink(it.url, tags.getTagsForManga(it.id).map { tag -> tag.name }) },
+            metadata.documents(id),
+            reviews.approvals(id),
         )
     }
 
@@ -149,6 +155,7 @@ class CollectionBackupService(
             if (folder.uri.scheme == "file") require(!Files.isSymbolicLink(File(checkNotNull(folder.uri.path)).toPath())) { "Linked folders are unsupported" }
             checkNotNull(folder.listFiles()) { "Cannot read collection files" }.sortedBy { it.name }.forEach { file ->
                 val name = checkNotNull(file.name)
+                if (name.startsWith(".collection-edit-")) return@forEach
                 require('/' !in name)
                 val relative = CollectionArchivePolicy.path(prefix + name)
                 if (file.uri.scheme == "file") require(!Files.isSymbolicLink(File(checkNotNull(file.uri.path)).toPath())) { "Linked files are unsupported" }
@@ -170,17 +177,24 @@ class CollectionBackupService(
         workRoot.listFiles().orEmpty().filter { it.isDirectory && !journalFile(it).exists() && !File(it, "journal.json.bak").exists() }.forEach { removeWork(it) }
     }
 
-    suspend fun create(id: Long, uri: Uri, progress: (Int, Int) -> Unit) {
+    suspend fun create(id: Long, uri: Uri, progress: (Int, Int) -> Unit, approvedOnly: Boolean = false) {
         check(!hasRecovery()) { "Recover the interrupted restore first" }
         val collection = source(id)
         collection.withExclusiveCollectionAccess {
+            check(handler.await { localManagerOperationsQueries.getPending(id).executeAsList().isEmpty() }) { "Recover the interrupted removal first" }
+            collection.prepareDatabaseMetadata()
             val root = directory(collection)
             val rootUri = root.uri.toString()
-            val data = snapshot(id)
-            val (regular, dirs) = files(root)
+            val originalData = snapshot(id)
+            val selected = originalData.approvals.filter { it.approved }.map { it.manga }.toSet()
+            require(!approvedOnly || selected.isNotEmpty()) { "No approved manga in this collection" }
+            val data = if (approvedOnly) originalData.approvedSubset() else originalData
+            val (originalFiles, originalDirs) = files(root)
+            val regular = if (approvedOnly) originalFiles.filter { it.path.removePrefix("files/").substringBefore('/') in selected } else originalFiles
+            val dirs = if (approvedOnly) originalDirs.filter { it.substringBefore('/') in selected } else originalDirs
             val custom = linkedMapOf<String, String>()
             val all = regular.toMutableList()
-            mangas.getMangaBySourceId(id).sortedBy { it.url }.forEachIndexed { index, manga ->
+            mangas.getMangaBySourceId(id).filter { !approvedOnly || it.url in selected }.sortedBy { it.url }.forEachIndexed { index, manga ->
                 val file = covers.getCustomCoverFile(manga.id)
                 if (file.isFile) {
                     val path = "covers/$index"
@@ -214,9 +228,9 @@ class CollectionBackupService(
                     }
                     check(all.all { it.currentVersion() == (it.size to it.modified) }) { "Collection files or covers changed during backup; retry" }
                     check(directory(collection).uri.toString() == rootUri) { "Collection changed during backup" }
-                    check(json.encodeToString(snapshot(id)) == json.encodeToString(data)) { "Collection data changed during backup; retry" }
+                    check(json.encodeToString(snapshot(id)) == json.encodeToString(originalData)) { "Collection data changed during backup; retry" }
                     val (after, afterDirs) = files(root)
-                    check(regular.map { Triple(it.path, it.size, it.modified) } == after.map { Triple(it.path, it.size, it.modified) } && dirs == afterDirs) { "Collection files changed during backup; retry" }
+                    check(originalFiles.map { Triple(it.path, it.size, it.modified) } == after.map { Triple(it.path, it.size, it.modified) } && originalDirs == afterDirs) { "Collection files changed during backup; retry" }
                     // A failed export may still have a ZIP central directory; only this final marker makes it restorable.
                     zip.putNextEntry(ZipEntry(CollectionArchivePolicy.COMPLETE))
                     val footer = JsonObject(mapOf("manifest_sha256" to JsonPrimitive(hash(bytes.inputStream()))))
@@ -229,14 +243,23 @@ class CollectionBackupService(
         }
     }
 
+    suspend fun verify(uri: Uri, progress: (Int, Int) -> Unit = { _, _ -> }): CollectionBackupManifest = readArchive(uri, null, progress)
+
     private fun validate(m: CollectionBackupManifest) {
-        require(m.version == 1) { "Unsupported collection backup version" }
+        require(m.version in 1..3) { "Unsupported collection backup version" }
+        require(m.data.documents.map { it.manga to it.path }.distinct().size == m.data.documents.size) { "Duplicate metadata documents" }
+        m.data.documents.forEach { document ->
+            require(document.manga.isEmpty() || m.data.mangas.any { it.url == document.manga }) { "Metadata belongs to another manga" }
+            CollectionArchivePolicy.path(document.path)
+            require(document.format in setOf("utf8", "base64")) { "Unsupported metadata encoding" }
+        }
         CollectionArchivePolicy.validatePaths(m.assets.map { it.path }, m.directories.map { "files/$it" })
         require(m.assets.all { it.size >= 0 && it.sha256.matches(Regex("[0-9a-f]{64}")) && (it.path.startsWith("files/") || it.path.startsWith("covers/")) })
         val urls = m.data.mangas.map { CollectionArchivePolicy.path(it.url) }
         require(urls.distinct().size == urls.size && urls.all { '/' !in it }) { "Invalid manga identities" }
         require(urls.map { it.lowercase(java.util.Locale.ROOT) }.distinct().size == urls.size) { "Ambiguous manga paths" }
         val known = urls.toSet()
+        require(m.data.approvals.map { it.manga }.distinct().size == m.data.approvals.size && m.data.approvals.all { it.manga in known }) { "Invalid export approvals" }
         require(m.data.tags.size <= 100000 && m.data.tags.all { it.isNotBlank() })
         require(m.data.categories.map { it.order }.distinct().size == m.data.categories.size && m.data.categories.map { it.name }.distinct().size == m.data.categories.size) { "Ambiguous category identities" }
         require(m.data.links.map { it.manga }.distinct().size == m.data.links.size)
@@ -364,6 +387,7 @@ class CollectionBackupService(
         try {
             val manifest = readArchive(uri, work, progress)
             return collection.withExclusiveCollectionAccess {
+                check(handler.await { localManagerOperationsQueries.getPending(id).executeAsList().isEmpty() }) { "Recover the interrupted removal first" }
                 val root = directory(collection)
                 val expected = linkedMapOf<String, String?>()
                 val conflicts = mutableListOf<String>()
@@ -536,6 +560,9 @@ class CollectionBackupService(
                             }
                         }
                     }
+                    reviews.importApprovals(plan.source, plan.manifest.data.approvals)
+                    metadata.restoreDocuments(plan.source, plan.manifest.data.documents)
+                    metadata.resetImport(plan.source)
                     collectionBackupCommitsQueries.resetRestoredChapterSync(plan.source)
                     collectionBackupCommitsQueries.markCommitted(plan.operation, plan.source)
                 }

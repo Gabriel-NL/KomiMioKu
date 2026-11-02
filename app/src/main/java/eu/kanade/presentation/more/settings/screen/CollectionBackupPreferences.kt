@@ -24,6 +24,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -34,6 +35,13 @@ import eu.kanade.tachiyomi.data.backup.collection.CollectionBackupJobs
 import eu.kanade.tachiyomi.data.backup.restore.BackupRestoreJob
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.persistentMapOf
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import tachiyomi.domain.localtag.repository.CollectionExportApproval
+import tachiyomi.domain.localtag.repository.ExportReviewRepository
+import tachiyomi.domain.localtag.repository.parseCollectionApprovalImport
 import tachiyomi.domain.source.model.FileSourceIds
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.i18n.kmk.KMR
@@ -43,15 +51,21 @@ import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
 @Composable
-internal fun collectionBackupPreferences(): List<Preference.PreferenceItem<out Any, out Any>> {
+internal fun collectionBackupPreferences(defaultSource: Long? = null): List<Preference.PreferenceItem<out Any, out Any>> {
     val context = LocalContext.current
     val manager = remember { Injekt.get<SourceManager>() }
+    val scope = rememberCoroutineScope()
+    var importing by remember { mutableStateOf(false) }
+    var importMessage by remember { mutableStateOf<String?>(null) }
+    var pendingReview by rememberSaveable { mutableStateOf<Long?>(null) }
+    val importedLabel = stringResource(KMR.strings.export_review_import_done)
+    val mismatchLabel = stringResource(KMR.strings.export_review_collection_mismatch)
     val jobs = remember { CollectionBackupJobs.get(context) }
     val state by jobs.state.collectAsState()
     val available by manager.sources.collectAsState(initial = manager.getAll())
     val collections = available.filterIsInstance<LocalSource>().filter { FileSourceIds.contains(it.id) && it.id != FileSourceIds.LOCAL && it.id != FileSourceIds.PRIVATE_COLLECTION }.sortedBy { it.name }
     // Intentionally not a preference or rememberSaveable: each settings session starts empty.
-    var selected by remember { mutableStateOf<String?>(null) }
+    var selected by remember { mutableStateOf(defaultSource?.toString()) }
     var pendingCreate by rememberSaveable { mutableStateOf<Long?>(null) }
     var pendingRestore by rememberSaveable { mutableStateOf<Long?>(null) }
     LaunchedEffect(Unit) { jobs.checkRecovery() }
@@ -66,7 +80,50 @@ internal fun collectionBackupPreferences(): List<Preference.PreferenceItem<out A
         pendingRestore = null
         if (uri != null && id != null) jobs.prepare(id, uri)
     }
-    val enabled = selected != null && !state.busy && state.prepared == null && !state.recovery
+    val importReviews = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        val target = pendingReview
+        pendingReview = null
+        if (uri != null && target != null) {
+            importing = true
+            scope.launch {
+                try {
+                    withContext(Dispatchers.IO + NonCancellable) {
+                        val source = manager.get(target) as? LocalSource ?: error("Collection unavailable")
+                        val raw = checkNotNull(context.contentResolver.openInputStream(uri)).use { stream ->
+                            val bytes = java.io.ByteArrayOutputStream()
+                            val buffer = ByteArray(8192)
+                            while (true) {
+                                val count = stream.read(buffer)
+                                if (count < 0) break
+                                check(bytes.size() + count <= 1024 * 1024) { "Approval import exceeds 1 MiB" }
+                                bytes.write(buffer, 0, count)
+                            }
+                            Charsets.UTF_8.newDecoder().decode(java.nio.ByteBuffer.wrap(bytes.toByteArray())).toString()
+                        }
+                        val data = parseCollectionApprovalImport(raw)
+                        check(data.collection.equals(source.name, ignoreCase = true)) { mismatchLabel }
+                        source.withExclusiveCollectionAccess {
+                            source.prepareDatabaseMetadata()
+                            Injekt.get<ExportReviewRepository>().importApprovals(target, data.approvedPaths.map { CollectionExportApproval(it, true) })
+                        }
+                    }
+                    importMessage = importedLabel
+                } catch (e: Exception) {
+                    importMessage = e.message ?: e.javaClass.simpleName
+                } finally {
+                    importing = false
+                }
+            }
+        }
+    }
+    importMessage?.let { message ->
+        AlertDialog(
+            onDismissRequest = { importMessage = null },
+            text = { Text(message) },
+            confirmButton = { TextButton(onClick = { importMessage = null }) { Text(stringResource(KMR.strings.reconcile_close)) } },
+        )
+    }
+    val enabled = selected != null && !importing && !state.busy && state.prepared == null && !state.recovery
     val close = stringResource(KMR.strings.reconcile_close)
     val plan = state.prepared
     if (plan != null && !state.busy) {
@@ -95,6 +152,7 @@ internal fun collectionBackupPreferences(): List<Preference.PreferenceItem<out A
     }
     if (state.outcome != null) {
         val result = when (state.outcome) {
+            "verified" -> KMR.strings.manager_verified
             "created" -> KMR.strings.collection_backup_created
             "restored" -> KMR.strings.collection_backup_restored
             "recovered" -> KMR.strings.collection_backup_recovered
@@ -111,9 +169,17 @@ internal fun collectionBackupPreferences(): List<Preference.PreferenceItem<out A
             value = selected.orEmpty(),
             entries = persistentMapOf("" to stringResource(KMR.strings.collection_backup_select)).puttingAll(collections.associate { it.id.toString() to it.name }),
             title = stringResource(KMR.strings.collection_backup_collection),
-            enabled = !state.busy && state.prepared == null,
+            enabled = !importing && !state.busy && state.prepared == null,
             onValueChanged = {
                 selected = it.takeIf(String::isNotEmpty)
+            },
+        ),
+        Preference.PreferenceItem.TextPreference(
+            title = stringResource(KMR.strings.export_review_import),
+            enabled = enabled,
+            onClick = {
+                pendingReview = selected?.toLongOrNull()
+                importReviews.launch(arrayOf("application/json", "text/plain", "application/octet-stream"))
             },
         ),
         Preference.PreferenceItem.CustomPreference(title = stringResource(KMR.strings.collection_backup_actions)) {

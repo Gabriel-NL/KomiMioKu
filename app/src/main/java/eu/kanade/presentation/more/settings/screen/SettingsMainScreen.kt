@@ -234,6 +234,12 @@ object SettingsMainScreen : Screen() {
             screen = SettingsDataScreen,
         ),
         Item(
+            titleRes = KMR.strings.manager_title,
+            subtitleRes = KMR.strings.manager_summary,
+            icon = Icons.Outlined.CollectionsBookmark,
+            screen = SettingsMangaManagerScreen,
+        ),
+        Item(
             titleRes = MR.strings.pref_category_security,
             subtitleRes = MR.strings.pref_security_summary,
             icon = Icons.Outlined.Security,

@@ -1,0 +1,15 @@
+CREATE TABLE local_manager_operations (
+ operation TEXT NOT NULL PRIMARY KEY,
+ source INTEGER NOT NULL,
+ root TEXT NOT NULL,
+ payload TEXT NOT NULL
+);
+
+put:
+INSERT INTO local_manager_operations VALUES (:operation, :source, :root, :payload);
+
+getPending:
+SELECT * FROM local_manager_operations WHERE source = :source;
+
+remove:
+DELETE FROM local_manager_operations WHERE operation = :operation;

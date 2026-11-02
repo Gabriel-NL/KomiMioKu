@@ -17,13 +17,34 @@ class LocalCollectionIndexRepositoryImpl(private val handler: DatabaseHandler) :
     private val mutex = Mutex()
     private val snapshots = MutableStateFlow<Map<Pair<Long, String>, LocalCollectionSnapshot>>(emptyMap())
 
+    override suspend fun invalidate(source: Long) = mutex.withLock {
+        snapshots.update { entries -> entries.filterKeys { it.first != source } }
+    }
+
     override suspend fun load(source: Long, root: String): LocalCollectionSnapshot = mutex.withLock { loadLocked(source, root) }
 
     private suspend fun loadLocked(source: Long, root: String): LocalCollectionSnapshot {
         snapshots.value[source to root]?.let { return it }
         val snapshot = handler.await(inTransaction = true) {
+            val records = localMetadataQueries.catalogMangas(source).executeAsList().groupBy { it.url }.mapValues { it.value.first() }
+            val entries = localCollectionIndexQueries.getEntries(source, root, ::IndexedLocalManga).executeAsList().map { entry ->
+                val row = records[entry.url]
+                if (row == null || !row.initialized) {
+                    entry
+                } else {
+                    entry.copy(
+                        title = row.title,
+                        author = row.author,
+                        artist = row.artist,
+                        description = row.description,
+                        genre = row.genre.orEmpty().joinToString(", "),
+                        status = row.status,
+                        thumbnail = row.thumbnail_url ?: entry.thumbnail,
+                    )
+                }
+            }
             LocalCollectionSnapshot(
-                localCollectionIndexQueries.getEntries(source, root, ::IndexedLocalManga).executeAsList(),
+                entries,
                 localCollectionIndexQueries.isReady(source, root).executeAsOne() > 0,
             )
         }

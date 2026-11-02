@@ -12,6 +12,8 @@ import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import tachiyomi.domain.localtag.model.LocalMetadataDocument
+import tachiyomi.domain.localtag.repository.CollectionExportApproval
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -63,6 +65,22 @@ class CollectionArchiveReadTest {
             }
         }
         return output.toByteArray()
+    }
+
+    @Test
+    fun `approved subset excludes unapproved metadata but preserves unused tag catalog`() {
+        val value = manifest().data.copy(
+            mangas = manifest().data.mangas + BackupManga(1, "Other", "Other"),
+            links = manifest().data.links + CollectionTagLink("Other", listOf("Unused")),
+            documents = listOf(LocalMetadataDocument("Other", "details.json", "utf8", "{}")),
+            approvals = listOf(CollectionExportApproval("Book", true), CollectionExportApproval("Other", false)),
+        ).approvedSubset()
+        assertEquals(listOf("Book"), value.mangas.map { it.url })
+        assertEquals(listOf("Book"), value.links.map { it.manga })
+        assertEquals(listOf("Assigned", "Unused"), value.tags)
+        assertTrue(value.documents.isEmpty())
+        assertTrue(value.mangas.single().chapters.single().read)
+        assertThrows(IllegalArgumentException::class.java) { value.copy(approvals = emptyList()).approvedSubset() }
     }
 
     @Test
@@ -134,6 +152,51 @@ class CollectionArchiveReadTest {
     fun `zip from an interrupted export is rejected even if every asset was written`() {
         assertThrows(IllegalArgumentException::class.java) {
             service.inspectArchive(ByteArrayInputStream(zip(manifest(), complete = false)))
+        }
+    }
+
+    @Test
+    fun `database metadata documents survive a version two archive without sidecar assets`() {
+        val original = manifest()
+        val doc = LocalMetadataDocument("Book", "ComicInfo.xml", "utf8", "<ComicInfo><LanguageISO>pt</LanguageISO><Unknown>Keep</Unknown></ComicInfo>")
+        val backup = original.copy(version = 2, data = original.data.copy(documents = listOf(doc)))
+        val restored = service.inspectArchive(ByteArrayInputStream(zip(backup)))
+        assertEquals(2, restored.version)
+        assertEquals(listOf(doc), restored.data.documents)
+        assertEquals(1, restored.assets.size)
+    }
+
+    @Test
+    fun `version one collection archives remain readable and foreign documents are rejected`() {
+        assertEquals(1, service.inspectArchive(ByteArrayInputStream(zip(manifest().copy(version = 1)))).version)
+        val original = manifest()
+        val foreign = LocalMetadataDocument("Another", "ComicInfo.xml", "utf8", "data")
+        assertThrows(IllegalArgumentException::class.java) {
+            service.inspectArchive(ByteArrayInputStream(zip(original.copy(data = original.data.copy(documents = listOf(foreign))))))
+        }
+    }
+
+    @Test
+    fun `version three approvals belong to the selected collection and survive export`() {
+        val base = manifest()
+        val data = base.copy(data = base.data.copy(approvals = listOf(CollectionExportApproval("Book", true))))
+        val restored = service.inspectArchive(ByteArrayInputStream(zip(data)))
+        assertEquals(3, restored.version)
+        assertEquals(listOf(CollectionExportApproval("Book", true)), restored.data.approvals)
+        val foreign = base.copy(data = base.data.copy(approvals = listOf(CollectionExportApproval("Other", true))))
+        assertThrows(IllegalArgumentException::class.java) { service.inspectArchive(ByteArrayInputStream(zip(foreign))) }
+    }
+
+    @Test
+    fun `zip prepared by the PC Central is accepted by the Android restore parser`() {
+        val input = checkNotNull(javaClass.getResourceAsStream("/central-collection-v3.zip"))
+        input.use {
+            val restored = service.inspectArchive(it)
+            assertEquals(3, restored.version)
+            assertEquals(listOf("Approved"), restored.data.mangas.map { manga -> manga.url })
+            assertEquals(listOf(CollectionExportApproval("Approved", true)), restored.data.approvals)
+            assertEquals(listOf("Unused"), restored.data.tags)
+            assertEquals(listOf("files/Approved/chapter.cbz"), restored.assets.map { asset -> asset.path })
         }
     }
 }

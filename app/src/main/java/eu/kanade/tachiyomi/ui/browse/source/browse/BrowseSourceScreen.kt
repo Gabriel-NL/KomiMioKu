@@ -170,6 +170,7 @@ data class BrowseSourceScreen(
         val bulkFavoriteScreenModel = rememberScreenModel { BulkFavoriteScreenModel() }
         val bulkFavoriteState by bulkFavoriteScreenModel.state.collectAsState()
         var showTagsDialog by remember { mutableStateOf(false) }
+        var showExportReview by remember { mutableStateOf(false) }
         var fileEditMerge by remember { mutableStateOf<Boolean?>(null) }
 
         BackHandler(enabled = bulkFavoriteState.selectionMode) {
@@ -210,6 +211,7 @@ data class BrowseSourceScreen(
                             isRunning = bulkFavoriteState.isRunning,
                             onClickClearSelection = bulkFavoriteScreenModel::toggleSelectionMode,
                             onChangeCategoryClick = bulkFavoriteScreenModel::addFavorite,
+                            onExportReviewClick = if (screenModel.source is LocalSource) ({ showExportReview = true }) else null,
                             onTagsClick = if (screenModel.source is LocalSource) ({ showTagsDialog = true }) else null,
                             onMergeFilesClick = if (screenModel.source is LocalSource) ({ fileEditMerge = true }) else null,
                             onRenameFilesClick = if (screenModel.source is LocalSource) ({ fileEditMerge = false }) else null,
@@ -430,6 +432,11 @@ data class BrowseSourceScreen(
             }
         }
 
+        if (showExportReview) {
+            (screenModel.source as? LocalSource)?.let { source ->
+                CollectionExportReviewDialog(source, bulkFavoriteState.selection, onDismiss = { showExportReview = false })
+            }
+        }
         if (showTagsDialog) {
             (screenModel.source as? LocalSource)?.let { localSource ->
                 BulkMangaTagsDialog(

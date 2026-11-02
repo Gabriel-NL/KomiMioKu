@@ -1,0 +1,20 @@
+CREATE TABLE local_export_approvals (
+    manga_id INTEGER NOT NULL PRIMARY KEY REFERENCES mangas(_id) ON DELETE CASCADE
+);
+
+getApprovals:
+SELECT mangas.url, CASE WHEN local_export_approvals.manga_id IS NULL THEN 0 ELSE 1 END AS approved
+FROM mangas LEFT JOIN local_export_approvals ON local_export_approvals.manga_id = mangas._id
+WHERE mangas.source = :source ORDER BY mangas.url;
+
+getSourceIds:
+SELECT _id FROM mangas WHERE source = :source AND _id IN :ids;
+
+getId:
+SELECT _id FROM mangas WHERE source = :source AND url = :url;
+
+approve:
+INSERT OR IGNORE INTO local_export_approvals VALUES (:id);
+
+revoke:
+DELETE FROM local_export_approvals WHERE manga_id = :id;

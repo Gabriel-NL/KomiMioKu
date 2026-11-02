@@ -56,9 +56,15 @@ class CustomMangaRepositoryImpl(context: Context) : CustomMangaRepository {
 
     private fun saveCustomInfo() {
         val jsonElements = customMangaMap.values.map { it.toJson() }
-        if (jsonElements.isNotEmpty()) {
-            editJson.delete()
-            editJson.writeText(Json.encodeToString(MangaList(jsonElements)))
+        editJson.parentFile?.mkdirs()
+        val atomic = android.util.AtomicFile(editJson)
+        val output = atomic.startWrite()
+        try {
+            output.write(Json.encodeToString(MangaList(jsonElements)).toByteArray(Charsets.UTF_8))
+            atomic.finishWrite(output)
+        } catch (error: Throwable) {
+            atomic.failWrite(output)
+            throw error
         }
     }
 
