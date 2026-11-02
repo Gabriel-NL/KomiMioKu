@@ -16,4 +16,11 @@ class LocalCollectionOrderingTest {
         assertEquals(listOf("Alpha", "Beta", "Zulu"), sortLocalCollection(books, LocalCollectionOrder.MODIFIED, false).map { it.title })
         assertEquals(listOf("Zulu", "Alpha", "Beta"), sortLocalCollection(books, LocalCollectionOrder.MODIFIED, true).map { it.title })
     }
+
+    @Test fun `opening count supports both directions with zero for unopened manga and stable ties`() {
+        val counts = mapOf("a-folder" to 5L, "z-folder" to 2L)
+        assertEquals(listOf("Zulu", "Alpha", "Beta"), sortLocalCollection(books, LocalCollectionOrder.OPEN_COUNT, false, counts).map { it.title })
+        assertEquals(listOf("Beta", "Alpha", "Zulu"), sortLocalCollection(books, LocalCollectionOrder.OPEN_COUNT, true, counts).map { it.title })
+        assertEquals(listOf("Alpha", "Beta", "Zulu"), sortLocalCollection(books, LocalCollectionOrder.OPEN_COUNT, false).map { it.title })
+    }
 }

@@ -134,6 +134,7 @@ import tachiyomi.domain.libraryUpdateError.interactor.InsertLibraryUpdateErrors
 import tachiyomi.domain.libraryUpdateError.model.LibraryUpdateError
 import tachiyomi.domain.libraryUpdateErrorMessage.interactor.InsertLibraryUpdateErrorMessages
 import tachiyomi.domain.libraryUpdateErrorMessage.model.LibraryUpdateErrorMessage
+import tachiyomi.domain.localtag.repository.LocalMangaUsageRepository
 import tachiyomi.domain.manga.interactor.DeleteMergeById
 import tachiyomi.domain.manga.interactor.GetDuplicateLibraryManga
 import tachiyomi.domain.manga.interactor.GetFlatMetadataById
@@ -308,6 +309,24 @@ class MangaScreenModel(
     }
 
     init {
+        // Once per Voyager details model, not per reactive update/recomposition or reader return.
+        screenModelScope.launchIO {
+            try {
+                val manga = getManga.await(mangaId) ?: return@launchIO
+                if (!manga.isLocal()) return@launchIO
+                val usage = Injekt.get<LocalMangaUsageRepository>()
+                val local = sourceManager.get(manga.source) as? tachiyomi.source.local.LocalSource
+                if (local == null) {
+                    usage.recordOpen(mangaId)
+                } else {
+                    local.withExclusiveCollectionAccess { usage.recordOpen(mangaId) }
+                }
+            } catch (error: kotlinx.coroutines.CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                logcat(LogPriority.ERROR, error) { "Could not record local manga opening" }
+            }
+        }
         screenModelScope.launchIO {
             getMangaAndChapters.subscribe(mangaId, applyFilter = true).distinctUntilChanged()
                 // SY -->

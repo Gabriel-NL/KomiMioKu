@@ -26,6 +26,7 @@ import tachiyomi.domain.backup.service.CollectionArchivePolicy
 import tachiyomi.domain.backup.service.CollectionRecoveryAction
 import tachiyomi.domain.backup.service.collectionRecoveryAction
 import tachiyomi.domain.localtag.model.CollectionTagChanges
+import tachiyomi.domain.localtag.model.LocalMangaUsage
 import tachiyomi.domain.localtag.repository.ExportReviewRepository
 import tachiyomi.domain.localtag.repository.LocalMetadataRepository
 import tachiyomi.domain.localtag.repository.LocalTagRepository
@@ -251,6 +252,7 @@ class CollectionBackupService(
         m.data.documents.forEach { document ->
             require(document.manga.isEmpty() || m.data.mangas.any { it.url == document.manga }) { "Metadata belongs to another manga" }
             CollectionArchivePolicy.path(document.path)
+            if (document.path == LocalMangaUsage.BACKUP_PATH) LocalMangaUsage.decode(document)
             require(document.format in setOf("utf8", "base64")) { "Unsupported metadata encoding" }
         }
         CollectionArchivePolicy.validatePaths(m.assets.map { it.path }, m.directories.map { "files/$it" })

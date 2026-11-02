@@ -5,6 +5,7 @@ import tachiyomi.data.libraryUpdateError.LibraryUpdateErrorWithRelationsReposito
 import tachiyomi.data.libraryUpdateErrorMessage.LibraryUpdateErrorMessageRepositoryImpl
 import tachiyomi.data.localtag.ExportReviewRepositoryImpl
 import tachiyomi.data.localtag.LocalCollectionIndexRepositoryImpl
+import tachiyomi.data.localtag.LocalMangaUsageRepositoryImpl
 import tachiyomi.data.localtag.LocalMetadataRepositoryImpl
 import tachiyomi.data.localtag.LocalTagRepositoryImpl
 import tachiyomi.domain.libraryUpdateError.interactor.DeleteLibraryUpdateErrors
@@ -19,6 +20,7 @@ import tachiyomi.domain.libraryUpdateErrorMessage.interactor.InsertLibraryUpdate
 import tachiyomi.domain.libraryUpdateErrorMessage.repository.LibraryUpdateErrorMessageRepository
 import tachiyomi.domain.localtag.repository.ExportReviewRepository
 import tachiyomi.domain.localtag.repository.LocalCollectionIndexRepository
+import tachiyomi.domain.localtag.repository.LocalMangaUsageRepository
 import tachiyomi.domain.localtag.repository.LocalMetadataRepository
 import tachiyomi.domain.localtag.repository.LocalTagRepository
 import uy.kohesive.injekt.api.InjektModule
@@ -32,6 +34,7 @@ class KMKDomainModule : InjektModule {
     override fun InjektRegistrar.registerInjectables() {
         addSingletonFactory<LocalCollectionIndexRepository> { LocalCollectionIndexRepositoryImpl(get()) }
         addSingletonFactory<ExportReviewRepository> { ExportReviewRepositoryImpl(get()) }
+        addSingletonFactory<LocalMangaUsageRepository> { LocalMangaUsageRepositoryImpl(get()) }
         addSingletonFactory<LocalMetadataRepository> { LocalMetadataRepositoryImpl(get(), get()) }
         addSingletonFactory<LocalTagRepository> { LocalTagRepositoryImpl(get()) }
         addSingletonFactory<LibraryUpdateErrorWithRelationsRepository> {

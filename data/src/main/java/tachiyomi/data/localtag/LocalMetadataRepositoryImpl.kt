@@ -5,6 +5,7 @@ import tachiyomi.data.DatabaseHandler
 import tachiyomi.domain.localtag.model.LocalChapterMetadata
 import tachiyomi.domain.localtag.model.LocalDatabaseMetadata
 import tachiyomi.domain.localtag.model.LocalMangaMetadata
+import tachiyomi.domain.localtag.model.LocalMangaUsage
 import tachiyomi.domain.localtag.model.LocalMetadataDocument
 import tachiyomi.domain.localtag.model.mergeLegacyLocalMetadata
 import tachiyomi.domain.localtag.repository.LocalMetadataRepository
@@ -62,9 +63,20 @@ class LocalMetadataRepositoryImpl(private val handler: DatabaseHandler, private 
             localMetadataQueries.markImported(current.id)
         }
     }
-    override suspend fun documents(source: Long) = handler.awaitList { localMetadataQueries.getDocuments(source, ::LocalMetadataDocument) }
+    override suspend fun documents(source: Long) = handler.await(inTransaction = true) {
+        val documents = localMetadataQueries.getDocuments(source, ::LocalMetadataDocument).executeAsList().filterNot { it.path == LocalMangaUsage.BACKUP_PATH }
+        documents + localMangaUsageQueries.getCounts(source).executeAsList().map { LocalMangaUsage.document(it.url, it.open_count) }
+    }
     override suspend fun restoreDocuments(source: Long, documents: List<LocalMetadataDocument>) {
-        handler.await(inTransaction = true) { documents.forEach { localMetadataQueries.putDocument(source, it.manga, it.path, it.format, it.content) } }
+        handler.await(inTransaction = true) {
+            documents.forEach {
+                if (it.path == LocalMangaUsage.BACKUP_PATH) {
+                    localMangaUsageQueries.restore(LocalMangaUsage.decode(it), source, it.manga)
+                } else {
+                    localMetadataQueries.putDocument(source, it.manga, it.path, it.format, it.content)
+                }
+            }
+        }
     }
     override suspend fun relocateDocuments(source: Long, urls: List<String>, target: String) {
         handler.await(inTransaction = true) {

@@ -62,6 +62,7 @@ import tachiyomi.domain.localtag.model.canonicalLocalTagName
 import tachiyomi.domain.localtag.model.localMetadataFingerprint
 import tachiyomi.domain.localtag.model.sortLocalCollection
 import tachiyomi.domain.localtag.repository.LocalCollectionIndexRepository
+import tachiyomi.domain.localtag.repository.LocalMangaUsageRepository
 import tachiyomi.domain.localtag.repository.LocalMetadataRepository
 import tachiyomi.domain.localtag.repository.LocalTagRepository
 import tachiyomi.domain.manga.interactor.GetManga
@@ -122,6 +123,7 @@ open class LocalSource(
     private val customMetadata: CustomMangaRepository by injectLazy()
     private val migrationMutex = Mutex()
     private val collectionIndex: LocalCollectionIndexRepository by injectLazy()
+    private val mangaUsage: LocalMangaUsageRepository by injectLazy()
     private val lastVerification = AtomicLong(0L)
     private val collectionMetadata by lazy {
         CollectionMetadataCache(
@@ -200,7 +202,8 @@ open class LocalSource(
         filters.filterIsInstance<OrderBy>().firstOrNull()?.let { filter ->
             val selection = filter.state ?: eu.kanade.tachiyomi.source.model.Filter.Sort.Selection(0, true)
             val order = LocalCollectionOrder.entries.getOrElse(selection.index) { LocalCollectionOrder.TITLE }
-            accepted = sortLocalCollection(accepted, order, selection.ascending)
+            val counts = if (order == LocalCollectionOrder.OPEN_COUNT) mangaUsage.counts(id) else emptyMap()
+            accepted = sortLocalCollection(accepted, order, selection.ascending, counts)
         }
         MangasPage(accepted.map { entry -> entry.toSourceManga() }, false)
     }

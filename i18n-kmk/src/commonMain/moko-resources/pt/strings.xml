@@ -255,4 +255,5 @@
     <string name="manager_import_batch">Importar pasta contendo vários mangás</string>
     <string name="local_sort_ascending">Crescente</string>
     <string name="local_sort_descending">Decrescente</string>
+    <string name="local_sort_open_count">Quantidade de vezes aberto</string>
 </resources>

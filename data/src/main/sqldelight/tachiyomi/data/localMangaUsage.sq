@@ -1,0 +1,27 @@
+CREATE TABLE local_manga_usage (
+    manga_id INTEGER NOT NULL PRIMARY KEY REFERENCES mangas(_id) ON DELETE CASCADE,
+    open_count INTEGER NOT NULL DEFAULT 0 CHECK(open_count >= 0)
+);
+
+increment:
+INSERT INTO local_manga_usage(manga_id, open_count)
+SELECT _id, 1 FROM mangas WHERE _id = :manga_id
+AND (source IN (0, 1000000000001) OR source BETWEEN 2000000000000 AND 2002147483647)
+ON CONFLICT(manga_id) DO UPDATE SET open_count = CASE WHEN open_count < 9223372036854775807 THEN open_count + 1 ELSE open_count END;
+
+getCounts:
+SELECT mangas.url, COALESCE(MAX(local_manga_usage.open_count), 0) AS open_count
+FROM local_manga_usage JOIN mangas ON mangas._id = local_manga_usage.manga_id
+WHERE mangas.source = :source GROUP BY mangas.url ORDER BY mangas.url;
+
+getForMangas:
+SELECT open_count FROM local_manga_usage WHERE manga_id IN :ids;
+
+setCount:
+INSERT INTO local_manga_usage(manga_id, open_count) VALUES (:manga_id, :open_count)
+ON CONFLICT(manga_id) DO UPDATE SET open_count = excluded.open_count;
+
+restore:
+INSERT INTO local_manga_usage(manga_id, open_count)
+SELECT _id, :open_count FROM mangas WHERE source = :source AND url = :url
+ON CONFLICT(manga_id) DO UPDATE SET open_count = MAX(open_count, excluded.open_count);

@@ -1,0 +1,4 @@
+CREATE TABLE local_manga_usage (
+    manga_id INTEGER NOT NULL PRIMARY KEY REFERENCES mangas(_id) ON DELETE CASCADE,
+    open_count INTEGER NOT NULL DEFAULT 0 CHECK(open_count >= 0)
+);

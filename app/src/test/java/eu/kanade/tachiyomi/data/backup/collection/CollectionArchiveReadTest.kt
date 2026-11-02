@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import tachiyomi.domain.localtag.model.LocalMangaUsage
 import tachiyomi.domain.localtag.model.LocalMetadataDocument
 import tachiyomi.domain.localtag.repository.CollectionExportApproval
 import java.io.ByteArrayInputStream
@@ -65,6 +66,17 @@ class CollectionArchiveReadTest {
             }
         }
         return output.toByteArray()
+    }
+
+    @Test
+    fun `opening counter survives collection archive and rejects malformed metadata`() {
+        val original = manifest()
+        val document = LocalMangaUsage.document("Book", 14)
+        val value = original.copy(data = original.data.copy(documents = listOf(document)))
+        val restored = service.inspectArchive(ByteArrayInputStream(zip(value)))
+        assertEquals(14L, LocalMangaUsage.decode(restored.data.documents.single()))
+        val invalid = value.copy(data = value.data.copy(documents = listOf(document.copy(content = "-1"))))
+        assertThrows(IllegalArgumentException::class.java) { service.inspectArchive(ByteArrayInputStream(zip(invalid))) }
     }
 
     @Test

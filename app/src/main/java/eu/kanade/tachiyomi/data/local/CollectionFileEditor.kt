@@ -16,6 +16,7 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import tachiyomi.data.DatabaseHandler
 import tachiyomi.domain.localtag.model.CollectionFileNames
+import tachiyomi.domain.localtag.model.LocalMangaUsage
 import tachiyomi.domain.localtag.model.canonicalLocalTagName
 import tachiyomi.domain.localtag.repository.LocalMetadataRepository
 import tachiyomi.domain.localtag.repository.LocalTagRepository
@@ -228,7 +229,11 @@ class CollectionFileEditor private constructor(private val context: Context) {
                         old.forEach { collectionFileEditsQueries.relocateChapter(primary.id, url, plan.title, plan.number.toDouble(), (plans.lastIndex - index).toLong(), it._id) }
                     }
                 }
-                if (preview.mangas.size > 1) localExportReviewQueries.revoke(primary.id)
+                if (preview.mangas.size > 1) {
+                    localExportReviewQueries.revoke(primary.id)
+                    val counts = localMangaUsageQueries.getForMangas(preview.mangas.map { it.id }).executeAsList()
+                    localMangaUsageQueries.setCount(primary.id, LocalMangaUsage.sum(counts))
+                }
                 metadata.relocateDocuments(source.id, preview.mangas.map { it.url }, title)
                 preview.mangas.drop(1).forEach { manga ->
                     collectionFileEditsQueries.copyTags(primary.id, manga.id)

@@ -366,4 +366,5 @@
     <string name="manager_import_batch">Import folder containing multiple manga</string>
     <string name="local_sort_ascending">Ascending</string>
     <string name="local_sort_descending">Descending</string>
+    <string name="local_sort_open_count">Number of times opened</string>
 </resources>
